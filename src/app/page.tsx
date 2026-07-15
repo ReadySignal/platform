@@ -5,7 +5,9 @@ import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
 import { getCompanies } from "../lib/queries/companies";
+import { getCallOutcomesForContact, saveCallOutcome } from "../services/callOutcomeService";
 import { getQueue } from "../services/queueService";
+import type { CallOutcome } from "../types/CallOutcome";
 import type { Company } from "../types/Company";
 import type { Prospect } from "../types/Prospect";
 
@@ -37,10 +39,13 @@ export default function Home() {
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<number[]>([]);
+  const [savedOutcomesByProspectId, setSavedOutcomesByProspectId] = useState<Record<number, CallOutcome>>({});
   const [expandedProspectId, setExpandedProspectId] = useState<number | null>(null);
   const [activeDispositionId, setActiveDispositionId] = useState<number | null>(null);
   const [selectedDisposition, setSelectedDisposition] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [savingOutcomeId, setSavingOutcomeId] = useState<number | null>(null);
+  const [outcomeError, setOutcomeError] = useState<string | null>(null);
   const [signalsRemaining, setSignalsRemaining] = useState(25);
   const [callsCompleted, setCallsCompleted] = useState(0);
   const [conversations, setConversations] = useState(0);
@@ -58,6 +63,45 @@ export default function Home() {
       try {
         const data = await getQueue();
         setProspects(data);
+
+        try {
+          const latestOutcomes = await Promise.all(
+            data.map(async (prospect) => {
+              if (typeof prospect.contactId !== "number") {
+                return [prospect.id, null] as const;
+              }
+
+              const outcomes = await getCallOutcomesForContact(prospect.contactId);
+              return [prospect.id, outcomes[0] ?? null] as const;
+            }),
+          );
+          const outcomesByProspectId = latestOutcomes.reduce<Record<number, CallOutcome>>(
+            (acc, [prospectId, outcome]) => {
+              if (outcome) {
+                acc[prospectId] = outcome;
+              }
+
+              return acc;
+            },
+            {},
+          );
+          const restoredCompletedIds = Object.keys(outcomesByProspectId).map(Number);
+
+          setSavedOutcomesByProspectId(outcomesByProspectId);
+          setCompletedIds(restoredCompletedIds);
+          setCallsCompleted(restoredCompletedIds.length);
+          setConversations(
+            Object.values(outcomesByProspectId).filter(
+              (outcome) => outcome.disposition === "Conversation" || outcome.disposition === "Meeting Booked",
+            ).length,
+          );
+          setMeetings(
+            Object.values(outcomesByProspectId).filter((outcome) => outcome.disposition === "Meeting Booked").length,
+          );
+          setSignalsRemaining(Math.max(0, 25 - restoredCompletedIds.length));
+        } catch (error) {
+          console.warn("Call outcomes are not available yet:", error);
+        }
       } catch (error) {
         console.error("Failed to load queue:", error);
         setQueueError(error instanceof Error ? error.message : "Unknown error");
@@ -93,40 +137,82 @@ export default function Home() {
   };
 
   const startConversation = (prospectId: number) => {
+    const savedOutcome = savedOutcomesByProspectId[prospectId];
+
     setExpandedProspectId(prospectId);
     setActiveDispositionId(prospectId);
-    setSelectedDisposition(null);
-    setNotes("");
+    setSelectedDisposition(savedOutcome?.disposition ?? null);
+    setNotes(savedOutcome?.notes ?? "");
+    setOutcomeError(null);
   };
 
   const cancelDisposition = () => {
     setActiveDispositionId(null);
     setSelectedDisposition(null);
     setNotes("");
+    setOutcomeError(null);
   };
 
-  const saveOutcome = (prospectId: number) => {
+  const saveOutcome = async (prospectId: number) => {
     if (!selectedDisposition) {
       return;
     }
 
-    const nextCompletedIds = [...completedIds, prospectId];
-    const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextCompletedIds, prospects);
+    const prospect = prospects.find((item) => item.id === prospectId);
 
-    setCompletedIds(nextCompletedIds);
-    setExpandedProspectId(nextExpandedProspectId);
-    setActiveDispositionId(null);
-    setSelectedDisposition(null);
-    setNotes("");
-    setSignalsRemaining((current) => Math.max(0, current - 1));
-    setCallsCompleted((current) => current + 1);
-
-    if (selectedDisposition === "Conversation" || selectedDisposition === "Meeting Booked") {
-      setConversations((current) => current + 1);
+    if (!prospect) {
+      setOutcomeError("Could not find the selected prospect. Refresh the queue and try again.");
+      return;
     }
 
-    if (selectedDisposition === "Meeting Booked") {
-      setMeetings((current) => current + 1);
+    if (typeof prospect.contactId !== "number") {
+      setOutcomeError("This prospect is missing a Supabase contact id, so the outcome cannot be saved.");
+      return;
+    }
+
+    const wasCompleted = completedIds.includes(prospectId);
+
+    setSavingOutcomeId(prospectId);
+    setOutcomeError(null);
+
+    try {
+      const savedOutcome = await saveCallOutcome({
+        contactId: prospect.contactId,
+        signalId: prospect.signalDatabaseId ?? null,
+        disposition: selectedDisposition,
+        notes,
+      });
+
+      const nextCompletedIds = wasCompleted ? completedIds : [...completedIds, prospectId];
+      const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextCompletedIds, prospects);
+
+      setSavedOutcomesByProspectId((current) => ({
+        ...current,
+        [prospectId]: savedOutcome,
+      }));
+      setCompletedIds(nextCompletedIds);
+      setExpandedProspectId(nextExpandedProspectId);
+      setActiveDispositionId(null);
+      setSelectedDisposition(null);
+      setNotes("");
+
+      if (!wasCompleted) {
+        setSignalsRemaining((current) => Math.max(0, current - 1));
+        setCallsCompleted((current) => current + 1);
+
+        if (selectedDisposition === "Conversation" || selectedDisposition === "Meeting Booked") {
+          setConversations((current) => current + 1);
+        }
+
+        if (selectedDisposition === "Meeting Booked") {
+          setMeetings((current) => current + 1);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to save outcome:", error);
+      setOutcomeError(error instanceof Error ? error.message : "Failed to save call outcome. Try again.");
+    } finally {
+      setSavingOutcomeId(null);
     }
   };
 
@@ -187,6 +273,9 @@ export default function Home() {
             activeDispositionId={activeDispositionId}
             selectedDisposition={selectedDisposition}
             notes={notes}
+            savedOutcomesByProspectId={savedOutcomesByProspectId}
+            savingOutcomeId={savingOutcomeId}
+            outcomeError={outcomeError}
             onToggleExpanded={toggleExpanded}
             onStartConversation={startConversation}
             onDispositionChange={setSelectedDisposition}

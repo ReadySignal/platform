@@ -1,4 +1,5 @@
 import type { Prospect } from "../types/Prospect";
+import type { CallOutcome } from "../types/CallOutcome";
 import { ProspectCard } from "./ProspectCard";
 
 type QueueProps = {
@@ -8,6 +9,9 @@ type QueueProps = {
   activeDispositionId: number | null;
   selectedDisposition: string | null;
   notes: string;
+  savedOutcomesByProspectId: Record<number, CallOutcome>;
+  savingOutcomeId: number | null;
+  outcomeError: string | null;
   onToggleExpanded: (prospectId: number) => void;
   onStartConversation: (prospectId: number) => void;
   onDispositionChange: (value: string) => void;
@@ -23,6 +27,9 @@ export function Queue({
   activeDispositionId,
   selectedDisposition,
   notes,
+  savedOutcomesByProspectId,
+  savingOutcomeId,
+  outcomeError,
   onToggleExpanded,
   onStartConversation,
   onDispositionChange,
@@ -42,6 +49,9 @@ export function Queue({
           isCompleted={completedIds.includes(prospect.id)}
           selectedDisposition={selectedDisposition}
           notes={notes}
+          savedOutcome={savedOutcomesByProspectId[prospect.id] ?? null}
+          isSavingOutcome={savingOutcomeId === prospect.id}
+          outcomeError={activeDispositionId === prospect.id ? outcomeError : null}
           onToggleExpanded={() => onToggleExpanded(prospect.id)}
           onStartConversation={() => onStartConversation(prospect.id)}
           onDispositionChange={onDispositionChange}

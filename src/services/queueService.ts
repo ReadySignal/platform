@@ -60,6 +60,7 @@ type ContactGroup = {
 };
 
 type QueueItem = {
+  primarySignalId: number | null;
   signalType: string;
   signalHeadline: string;
   signalDetails: string;
@@ -131,6 +132,7 @@ function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
 
   return {
     id,
+    contactId: Number(item.contactId),
     name: name || "Unknown Contact",
     title: item.title || "Unknown Title",
     company: item.companyName || "Unknown Company",
@@ -146,6 +148,7 @@ function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
     whyTodayCategory: item.signalType || "Signal",
     whyTodayReason: item.whyToday || reason,
     signalId,
+    signalDatabaseId: item.primarySignalId,
     signalOccurredAt: item.signalOccurredAt || null,
     targetAccount: item.targetAccount,
     signals: item.secondarySignals,
@@ -266,6 +269,7 @@ export async function getQueue(): Promise<Prospect[]> {
 
       return {
         ...contactGroup,
+        primarySignalId: primarySignal.id,
         signalType: primarySignal.signalType,
         signalHeadline: primarySignal.headline,
         signalDetails: primarySignal.details || "",

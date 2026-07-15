@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CallOutcome } from "../types/CallOutcome";
 import type { Prospect } from "../types/Prospect";
 import { calculateSignalScore } from "../lib/signalEngine";
 import { getSignalCategory, getSignalStyleClasses } from "../lib/signalLibrary";
@@ -15,6 +16,9 @@ type ProspectCardProps = {
   isCompleted: boolean;
   selectedDisposition: string | null;
   notes: string;
+  savedOutcome: CallOutcome | null;
+  isSavingOutcome: boolean;
+  outcomeError: string | null;
   onToggleExpanded: () => void;
   onStartConversation: () => void;
   onDispositionChange: (value: string) => void;
@@ -31,6 +35,9 @@ export function ProspectCard({
   isCompleted,
   selectedDisposition,
   notes,
+  savedOutcome,
+  isSavingOutcome,
+  outcomeError,
   onToggleExpanded,
   onStartConversation,
   onDispositionChange,
@@ -59,6 +66,7 @@ export function ProspectCard({
       year: "numeric",
     });
   };
+  const savedOutcomeDate = savedOutcome ? formatOccurredDate(savedOutcome.createdAt) : null;
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)] transition duration-200">
@@ -216,13 +224,22 @@ export function ProspectCard({
               <p className="mt-2 text-sm leading-6 text-slate-700">
                 Capture the outcome for {prospect.name} and keep the queue moving.
               </p>
+              {savedOutcome ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+                  <p className="font-semibold">{savedOutcome.disposition}</p>
+                  {savedOutcome.notes ? <p className="mt-1 leading-6">{savedOutcome.notes}</p> : null}
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                    Saved {savedOutcomeDate}
+                  </p>
+                </div>
+              ) : null}
 
               <button
                 type="button"
                 onClick={onStartConversation}
                 className="mt-4 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition duration-200 hover:bg-slate-700"
               >
-                Start Conversation
+                {savedOutcome ? "Reopen Outcome" : "Start Conversation"}
               </button>
 
               {isDispositionOpen ? (
@@ -230,6 +247,8 @@ export function ProspectCard({
                   <DispositionPanel
                     selectedDisposition={selectedDisposition}
                     notes={notes}
+                    isSaving={isSavingOutcome}
+                    error={outcomeError}
                     onDispositionChange={onDispositionChange}
                     onNotesChange={onNotesChange}
                     onSave={onSaveOutcome}

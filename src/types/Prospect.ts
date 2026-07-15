@@ -1,5 +1,6 @@
 export interface Prospect {
   id: number;
+  contactId?: number;
   name: string;
   title: string;
   company: string;
@@ -15,6 +16,7 @@ export interface Prospect {
   whyTodayCategory: string;
   whyTodayReason: string;
   signalId: string;
+  signalDatabaseId?: number | null;
   signalOccurredAt?: string | null;
   targetAccount?: boolean;
   opportunityScore?: number;
