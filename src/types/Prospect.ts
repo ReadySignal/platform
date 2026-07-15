@@ -15,7 +15,13 @@ export interface Prospect {
   confidence: "High Confidence" | "Medium Confidence";
   confidenceScore: number;
   whyTodayCategory: string;
+  whyTodayLabel?: string;
   whyTodayReason: string;
+  callBrief?: {
+    whyThisContact: string;
+    conversationAngle: string;
+    discoveryQuestions: string[];
+  };
   signalId: string;
   signalDatabaseId?: number | null;
   signalOccurredAt?: string | null;

@@ -6,6 +6,7 @@ import type { Prospect } from "../types/Prospect";
 
 type QueueContactRow = {
   id: string | number;
+  is_demo: boolean | null;
   first_name: string | null;
   last_name: string | null;
   title: string | null;
@@ -21,6 +22,7 @@ type QueueContactRow = {
         industry: string | null;
         state: string | null;
         is_target_account: boolean | null;
+        is_demo: boolean | null;
       }
     | null;
   signals:
@@ -32,6 +34,7 @@ type QueueContactRow = {
         occurred_at: string | null;
         score_points: number | null;
         is_active: boolean | null;
+        is_demo: boolean | null;
       }[]
     | null;
 };
@@ -80,10 +83,19 @@ function toComparableTime(value: string | null) {
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }
 
+function isResearchedOpportunity(signalType: string | null | undefined) {
+  return signalType === "researched-opportunity";
+}
+
 function compareSignalsByPriority(
-  a: { scorePoints: number; occurredAt: string | null },
-  b: { scorePoints: number; occurredAt: string | null },
+  a: { signalType: string; scorePoints: number; occurredAt: string | null },
+  b: { signalType: string; scorePoints: number; occurredAt: string | null },
 ) {
+  const researchedPriority = Number(isResearchedOpportunity(b.signalType)) - Number(isResearchedOpportunity(a.signalType));
+  if (researchedPriority !== 0) {
+    return researchedPriority;
+  }
+
   if (b.scorePoints !== a.scorePoints) {
     return b.scorePoints - a.scorePoints;
   }
@@ -127,10 +139,62 @@ function toConfidence(scorePoints: number): Prospect["confidence"] {
   return label === "High Confidence" ? "High Confidence" : "Medium Confidence";
 }
 
+function toTitleCase(value: string) {
+  return value
+    .trim()
+    .replaceAll("-", " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getWhyTodayParts(signalType: string, headline: string) {
+  if (!isResearchedOpportunity(signalType)) {
+    return {
+      label: undefined,
+      headline,
+    };
+  }
+
+  const [possibleCategory, ...rest] = headline.split(":");
+  const category = possibleCategory?.trim();
+  const parsedHeadline = rest.join(":").trim();
+
+  if (category && parsedHeadline) {
+    return {
+      label: toTitleCase(category),
+      headline: parsedHeadline,
+    };
+  }
+
+  return {
+    label: "Researched Opportunity",
+    headline,
+  };
+}
+
+function toCallBrief(item: ContactGroup & QueueItem): Prospect["callBrief"] {
+  if (item.signalType !== "researched-opportunity") {
+    return undefined;
+  }
+
+  return {
+    whyThisContact:
+      item.signalDetails || `${item.firstName || "This contact"} is the top researched contact for this account.`,
+    conversationAngle: "Explore how this researched company development may be affecting priorities for this team.",
+    discoveryQuestions: [
+      "How is this development affecting your team?",
+      "What has become harder or more urgent as a result?",
+      "Who else is involved if this becomes an active project?",
+    ],
+  };
+}
+
 function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
   const signalId = toSignalId(item.signalType);
   const name = `${item.firstName} ${item.lastName}`.trim();
   const reason = item.signalHeadline || item.whyToday || "Live signal indicates timely outreach potential.";
+  const whyToday = getWhyTodayParts(item.signalType, reason);
+  const whyTodayReason = isResearchedOpportunity(item.signalType) ? whyToday.headline : item.whyToday || reason;
 
   return {
     id,
@@ -149,7 +213,9 @@ function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
     confidence: toConfidence(item.signalScorePoints),
     confidenceScore: item.signalScorePoints,
     whyTodayCategory: item.signalType || "Signal",
-    whyTodayReason: item.whyToday || reason,
+    whyTodayLabel: whyToday.label,
+    whyTodayReason,
+    callBrief: toCallBrief(item),
     signalId,
     signalDatabaseId: item.primarySignalId,
     signalOccurredAt: item.signalOccurredAt || null,
@@ -180,13 +246,14 @@ function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
   };
 }
 
-export async function getQueue(): Promise<Prospect[]> {
+export async function getQueue(options: { includeDemo?: boolean } = {}): Promise<Prospect[]> {
   try {
     const { data, error } = await supabase
       .from("contacts")
       .select(
         `
           id,
+          is_demo,
           first_name,
           last_name,
           title,
@@ -200,7 +267,8 @@ export async function getQueue(): Promise<Prospect[]> {
             name,
             industry,
             state,
-            is_target_account
+            is_target_account,
+            is_demo
           ),
           signals (
             id,
@@ -209,7 +277,8 @@ export async function getQueue(): Promise<Prospect[]> {
             details,
             occurred_at,
             score_points,
-            is_active
+            is_active,
+            is_demo
           )
         `,
       )
@@ -228,18 +297,30 @@ export async function getQueue(): Promise<Prospect[]> {
 
     for (const contact of contacts) {
       const company = contact.companies;
+
+      if (!options.includeDemo && (contact.is_demo || company?.is_demo)) {
+        continue;
+      }
+
       const contactIdKey = String(contact.id);
       const activeSignals = (contact.signals || [])
-        .filter((signal) => signal.is_active !== false)
+        .filter((signal) => signal.is_active !== false && (options.includeDemo || !signal.is_demo))
         .map((signal, index) => ({
           id: Number(signal.id) || index + 1,
           signalType: signal.signal_type || "industry-news",
           headline: signal.headline || "Live signal",
           details: signal.details,
           occurredAt: signal.occurred_at,
-          scorePoints: Math.max(0, Math.min(100, signal.score_points ?? 60)),
+          scorePoints:
+            signal.signal_type === "researched-opportunity"
+              ? signal.score_points ?? 0
+              : Math.max(0, Math.min(100, signal.score_points ?? 60)),
         }))
         .sort(compareSignalsByPriority);
+
+      if (activeSignals.length === 0) {
+        continue;
+      }
 
       groupedByContact.set(contactIdKey, {
         contactId: contact.id,
@@ -261,16 +342,7 @@ export async function getQueue(): Promise<Prospect[]> {
     }
 
     const queueItems = Array.from(groupedByContact.values()).map((contactGroup) => {
-      const primarySignal =
-        contactGroup.activeSignals[0] ||
-        {
-          id: Number(contactGroup.contactId) || 1,
-          signalType: "industry-news",
-          headline: "Live contact loaded",
-          details: "No active signal was attached to this contact.",
-          occurredAt: null,
-          scorePoints: 60,
-        };
+      const primarySignal = contactGroup.activeSignals[0];
 
       return {
         ...contactGroup,

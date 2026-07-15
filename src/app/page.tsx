@@ -109,7 +109,9 @@ export default function Home() {
       setQueueError(null);
 
       try {
-        const data = await getQueue();
+        const includeDemo =
+          typeof window !== "undefined" && new URLSearchParams(window.location.search).get("showDemo") === "1";
+        const data = await getQueue({ includeDemo });
         setProspects(data);
         setOpportunitiesRemaining(data.length);
 

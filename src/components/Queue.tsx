@@ -81,16 +81,30 @@ function ConfidenceBreakdown({ prospect }: { prospect: Prospect }) {
   );
 }
 
-function Indicator({ label, active }: { label: string; active: boolean }) {
+function ReadinessDisclosure({ indicators }: { indicators: Array<{ label: string; active: boolean; status: string }> }) {
+  const readyCount = indicators.filter((indicator) => indicator.active).length;
+
   return (
-    <div
-      className={`rounded-xl border px-3 py-2 ${
-        active ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-600"
-      }`}
-    >
-      <p className="text-sm font-semibold">{label}</p>
-      <p className="mt-1 text-xs">{active ? "Confirmed" : "Needs attention"}</p>
-    </div>
+    <details className="rounded-2xl border border-slate-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-800">
+        <span>Before You Call &middot; {readyCount} of {indicators.length} ready</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Details</span>
+      </summary>
+      <div className="grid gap-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-2">
+        {indicators.map((indicator) => (
+          <div key={indicator.label} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+            <p className="text-sm font-semibold text-slate-800">{indicator.label}</p>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                indicator.active ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              {indicator.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -137,13 +151,38 @@ function PrimaryWorkspace({
   const signal = calculateSignalScore(prospect);
   const signalCategory = getSignalCategory(prospect.signalId);
   const beforeCallIndicators = [
-    { label: "Verified contact", active: Boolean(prospect.verifiedContact) },
-    { label: "No previous outreach", active: Boolean(prospect.noPreviousOutreach) },
-    { label: "Target account", active: Boolean(prospect.targetAccount) },
-    { label: "Relevant context", active: Boolean(prospect.relevantContext) },
-    { label: "Title fit", active: Boolean(prospect.titleMatch) },
-    { label: "Company fit", active: Boolean(prospect.companySizeMatch || prospect.targetIndustry || prospect.targetState) },
+    {
+      label: "Verified contact",
+      active: Boolean(prospect.verifiedContact),
+      status: prospect.verifiedContact ? "Ready" : "Missing",
+    },
+    {
+      label: "Previous outreach",
+      active: Boolean(prospect.noPreviousOutreach),
+      status: prospect.noPreviousOutreach ? "None" : "Review",
+    },
+    {
+      label: "Target account",
+      active: Boolean(prospect.targetAccount),
+      status: prospect.targetAccount ? "Yes" : "No",
+    },
+    {
+      label: "Relevant context",
+      active: Boolean(prospect.relevantContext),
+      status: prospect.relevantContext ? "Ready" : "Limited",
+    },
+    {
+      label: "Title fit",
+      active: Boolean(prospect.titleMatch),
+      status: prospect.titleMatch ? "Ready" : "Limited",
+    },
+    {
+      label: "Company fit",
+      active: Boolean(prospect.companySizeMatch || prospect.targetIndustry || prospect.targetState),
+      status: prospect.companySizeMatch || prospect.targetIndustry || prospect.targetState ? "Ready" : "Limited",
+    },
   ];
+  const whyTodayLabel = prospect.whyTodayLabel || signalCategory.label;
 
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)] sm:p-6">
@@ -174,7 +213,7 @@ function PrimaryWorkspace({
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">Why Today</p>
-            <p className="mt-3 text-base font-semibold text-slate-950">{signalCategory.label}</p>
+            <p className="mt-3 text-base font-semibold text-slate-950">{whyTodayLabel}</p>
             <p className="mt-2 text-sm leading-6 text-slate-700">{prospect.whyTodayReason || prospect.reason}</p>
             {prospect.signalOccurredAt ? (
               <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -184,19 +223,40 @@ function PrimaryWorkspace({
           </div>
         </div>
 
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">Before You Call</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {beforeCallIndicators.map((indicator) => (
-              <Indicator key={indicator.label} label={indicator.label} active={indicator.active} />
-            ))}
+        {prospect.callBrief ? (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-blue-700">Call Brief</p>
+            <div className="mt-3 grid gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Why this contact</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{prospect.callBrief.whyThisContact}</p>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Conversation angle</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{prospect.callBrief.conversationAngle}</p>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Discovery Questions</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">
+                  {prospect.callBrief.discoveryQuestions.map((question) => (
+                    <li key={question} className="text-sm leading-6 text-slate-700">
+                      {question}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">Context</p>
-          <p className="mt-3 text-sm leading-6 text-slate-700">{getContextSummary(prospect)}</p>
-        </div>
+        <ReadinessDisclosure indicators={beforeCallIndicators} />
+
+        {!prospect.callBrief ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">Context</p>
+            <p className="mt-3 text-sm leading-6 text-slate-700">{getContextSummary(prospect)}</p>
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white">
           <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">Action</p>

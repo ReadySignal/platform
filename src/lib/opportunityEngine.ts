@@ -53,6 +53,23 @@ function getSignalRecencyPoints(occurredAt: string | null | undefined) {
 }
 
 function scoreProspect(prospect: Prospect) {
+  if (prospect.whyTodayCategory === "researched-opportunity") {
+    // The Contact Intelligence score is the single source of truth.
+    // It must never be recalculated downstream.
+    const contactPriorityScore = prospect.confidenceScore || 0;
+
+    return {
+      ...prospect,
+      opportunityScore: contactPriorityScore,
+      opportunityBreakdown: [
+        {
+          label: "Contact Intelligence Score",
+          points: contactPriorityScore,
+        },
+      ],
+    };
+  }
+
   const breakdown: OpportunityBreakdownItem[] = [
     { label: "Signal Score", points: getSignalScorePoints(prospect) },
     { label: "Signal Priority", points: getSignalPriorityPoints(prospect) },

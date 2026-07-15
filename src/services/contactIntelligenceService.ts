@@ -89,10 +89,6 @@ function getEvidenceRelevance(contact: CompanyContact, evidence: Evidence[]) {
     (keyword) => title.includes(keyword) && evidenceText.includes(keyword),
   ).length;
 
-  if (contact.activeSignals.length > 0) {
-    return clampScore(12 + matchingKeywordCount * 4 + Math.min(contact.activeSignals.length, 2) * 3, 25);
-  }
-
   if (evidence.length > 0) {
     return clampScore(8 + matchingKeywordCount * 4, 25);
   }
@@ -207,6 +203,8 @@ export function rankContactsForCompany(contacts: CompanyContact[], evidence: Evi
         verifiedContactInformation: getVerifiedContactInformationScore(contact),
         importedContext: getImportedContextScore(contact),
       };
+      // The Contact Intelligence score is the single source of truth.
+      // It must never be recalculated downstream.
       const overallScore = Object.values(scoreBreakdown).reduce((total, score) => total + score, 0);
 
       return {

@@ -18,7 +18,25 @@ export function getConfidenceLabel(score: number) {
   return "Low Confidence";
 }
 
+function isResearchedOpportunity(prospect: Prospect) {
+  return prospect.whyTodayCategory === "researched-opportunity";
+}
+
 export function calculateSignalScore(prospect: Prospect) {
+  if (isResearchedOpportunity(prospect)) {
+    const score = prospect.confidenceScore || 0;
+
+    return {
+      score,
+      breakdown: [
+        {
+          label: "Contact Intelligence Score",
+          points: score,
+        },
+      ],
+    };
+  }
+
   const signal = getSignalCategory(prospect.signalId);
 
   const rules = [
