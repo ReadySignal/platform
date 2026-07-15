@@ -20,8 +20,34 @@ export type CompanyContact = {
   email: string | null;
   relevantContext: string | null;
   whyToday: string | null;
+  verifiedContact: boolean;
+  noPreviousOutreach: boolean;
   activeSignals: CompanySignal[];
   callOutcomes: CallOutcome[];
+};
+
+export type ContactScoreBreakdown = {
+  titleRelevance: number;
+  evidenceRelevance: number;
+  previousOutreach: number;
+  verifiedContactInformation: number;
+  importedContext: number;
+};
+
+export type RankedCompanyContact = CompanyContact & {
+  overallScore: number;
+  scoreBreakdown: ContactScoreBreakdown;
+  companyRank: number;
+  recommended: boolean;
+  whyThisContact: string;
+  previousOutreachStatus: string;
+};
+
+export type SalesInsight = {
+  hasSufficientEvidence: boolean;
+  whyThisContact: string;
+  conversationAngle: string;
+  discoveryQuestions: string[];
 };
 
 export type CompanyActivityItem =
@@ -46,6 +72,8 @@ export type CompanyActivityItem =
 export type CompanyIntelligence = {
   company: Company;
   contacts: CompanyContact[];
+  rankedContacts: RankedCompanyContact[];
+  salesInsight: SalesInsight | null;
   evidence: Evidence[];
   activityTimeline: CompanyActivityItem[];
 };

@@ -40,6 +40,18 @@ function formatInteger(value: number | null) {
   return value === null ? "Unknown" : value.toLocaleString();
 }
 
+function formatScoreLabel(value: number) {
+  if (value >= 75) {
+    return "High";
+  }
+
+  if (value >= 45) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
 function getParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -208,65 +220,41 @@ export default function CompanyDetailPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)]">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Evidence</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {evidenceCount} source-backed {evidenceCount === 1 ? "record" : "records"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 divide-y divide-slate-100">
-                {companyIntelligence.evidence.length > 0 ? (
-                  companyIntelligence.evidence.slice(0, 5).map((evidence) => (
-                    <article key={evidence.id} className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-slate-950">{evidence.headline}</p>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                            {evidence.evidenceType}
-                          </span>
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
-                            {evidence.confidence}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {evidence.sourceName} - {formatDate(evidence.publishedAt)}
-                        </p>
-                      </div>
-                      <a
-                        href={evidence.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-semibold text-slate-600 transition hover:text-slate-950"
-                      >
-                        View source
-                      </a>
-                    </article>
-                  ))
-                ) : (
-                  <p className="py-3 text-sm text-slate-500">No source-backed evidence has been stored yet.</p>
-                )}
-              </div>
-            </section>
-
             <section className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
               <div className="space-y-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Contacts</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Ranked Contacts
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Contacts ranked by title fit, stored evidence, outreach history, verified contact data, and imported context.
+                  </p>
                 </div>
 
-                {companyIntelligence.contacts.map((contact) => (
+                {companyIntelligence.rankedContacts.map((contact) => (
                   <article
                     key={contact.id}
                     className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)]"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-950">{contact.name}</p>
-                        <p className="mt-1 text-sm text-slate-600">{contact.title}</p>
+                      <div className="flex gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+                          #{contact.companyRank}
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-950">{contact.name}</p>
+                            {contact.recommended ? (
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                                Recommended
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-sm text-slate-600">{contact.title}</p>
+                          <p className="mt-2 text-sm font-semibold text-slate-700">
+                            {formatScoreLabel(contact.overallScore)} confidence - {contact.overallScore}%
+                          </p>
+                        </div>
                       </div>
                       <div className="text-sm text-slate-500 sm:text-right">
                         {contact.email ? <p>{contact.email}</p> : null}
@@ -275,55 +263,91 @@ export default function CompanyDetailPage() {
                       </div>
                     </div>
 
-                    {contact.whyToday || contact.relevantContext ? (
-                      <p className="mt-3 text-sm leading-6 text-slate-700">
-                        {contact.whyToday || contact.relevantContext}
-                      </p>
-                    ) : null}
+                    {contact.companyRank === 1 && companyIntelligence.salesInsight ? (
+                      <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-blue-700">
+                            Call Brief
+                          </p>
+                        </div>
+
+                        {!companyIntelligence.salesInsight.hasSufficientEvidence ? (
+                          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            Stored evidence is insufficient. The guidance below avoids unsupported claims.
+                          </p>
+                        ) : null}
+
+                        <div className="mt-4 grid gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">Why this contact</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-700">
+                              {companyIntelligence.salesInsight.whyThisContact}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">Conversation angle</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-700">
+                              {companyIntelligence.salesInsight.conversationAngle}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">Discovery Questions</p>
+                            <ol className="mt-2 list-decimal space-y-2 pl-5">
+                              {companyIntelligence.salesInsight.discoveryQuestions.map((question) => (
+                                <li key={question} className="text-sm leading-6 text-slate-700">
+                                  {question}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Why This Contact
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{contact.whyThisContact}</p>
+                      </div>
+                    )}
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                          Active Signals
+                          Score Breakdown
                         </p>
                         <div className="mt-2 space-y-2">
-                          {contact.activeSignals.length > 0 ? (
-                            contact.activeSignals.map((signal) => (
-                              <div key={signal.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-sm font-semibold text-slate-900">{signal.headline}</p>
-                                  <span className="text-xs font-semibold text-slate-500">+{signal.scorePoints}</span>
-                                </div>
-                                {signal.details ? <p className="mt-1 text-sm text-slate-600">{signal.details}</p> : null}
-                                <p className="mt-1 text-xs text-slate-500">{formatDate(signal.occurredAt)}</p>
+                          {[
+                            ["Title relevance", contact.scoreBreakdown.titleRelevance],
+                            ["Evidence relevance", contact.scoreBreakdown.evidenceRelevance],
+                            ["Previous outreach", contact.scoreBreakdown.previousOutreach],
+                            ["Verified contact info", contact.scoreBreakdown.verifiedContactInformation],
+                            ["Imported context", contact.scoreBreakdown.importedContext],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900">{label}</p>
+                                <span className="text-xs font-semibold text-slate-500">+{value}</span>
                               </div>
-                            ))
-                          ) : (
-                            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                              No active signals.
-                            </p>
-                          )}
+                            </div>
+                          ))}
                         </div>
                       </div>
 
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                          Saved Outcomes
+                          Outreach Status
                         </p>
-                        <div className="mt-2 space-y-2">
-                          {contact.callOutcomes.length > 0 ? (
-                            contact.callOutcomes.map((outcome) => (
-                              <div key={outcome.id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                                <p className="text-sm font-semibold text-emerald-950">{outcome.disposition}</p>
-                                {outcome.notes ? <p className="mt-1 text-sm text-emerald-900">{outcome.notes}</p> : null}
-                                <p className="mt-1 text-xs text-emerald-700">{formatDate(outcome.createdAt)}</p>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                              No saved outcomes.
-                            </p>
-                          )}
+                        <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <p className="text-sm font-semibold text-slate-900">{contact.previousOutreachStatus}</p>
+                          <p className="mt-2 text-sm text-slate-600">
+                            {contact.verifiedContact ? "Verified contact information is available." : "Contact information is not verified."}
+                          </p>
+                          {contact.relevantContext ? (
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{contact.relevantContext}</p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -332,6 +356,42 @@ export default function CompanyDetailPage() {
               </div>
 
               <aside className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)]">
+                <details className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Company Evidence ({evidenceCount})
+                  </summary>
+                  <div className="mt-3 divide-y divide-slate-200">
+                    {companyIntelligence.evidence.length > 0 ? (
+                      companyIntelligence.evidence.slice(0, 5).map((evidence) => (
+                        <article key={evidence.id} className="py-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-950">{evidence.headline}</p>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                              {evidence.evidenceType}
+                            </span>
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+                              {evidence.confidence}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {evidence.sourceName} - {formatDate(evidence.publishedAt)}
+                          </p>
+                          <a
+                            href={evidence.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex text-sm font-semibold text-slate-600 transition hover:text-slate-950"
+                          >
+                            View source
+                          </a>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="py-3 text-sm text-slate-500">No source-backed evidence has been stored yet.</p>
+                    )}
+                  </div>
+                </details>
+
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Activity Timeline</p>
                 <div className="mt-4 space-y-3">
                   {companyIntelligence.activityTimeline.length > 0 ? (

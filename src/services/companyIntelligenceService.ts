@@ -1,6 +1,8 @@
 import { supabase } from "../lib/supabase";
 import { getCallOutcomesForContact } from "./callOutcomeService";
+import { rankContactsForCompany } from "./contactIntelligenceService";
 import { getEvidenceForCompany } from "./evidenceService";
+import { createSalesInsight } from "./salesInsightService";
 import type {
   CompanyActivityItem,
   CompanyContact,
@@ -40,6 +42,8 @@ type CompanyDetailRow = {
         email: string | null;
         relevant_context: string | null;
         why_today: string | null;
+        verified_contact: boolean | null;
+        no_previous_outreach: boolean | null;
         signals:
           | Array<{
               id: string | number;
@@ -117,6 +121,8 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
           email,
           relevant_context,
           why_today,
+          verified_contact,
+          no_previous_outreach,
           signals (
             id,
             signal_type,
@@ -162,6 +168,8 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
         email: contact.email,
         relevantContext: contact.relevant_context,
         whyToday: contact.why_today,
+        verifiedContact: Boolean(contact.verified_contact || contact.phone || contact.mobile || contact.email),
+        noPreviousOutreach: Boolean(contact.no_previous_outreach),
         activeSignals,
         callOutcomes,
       };
@@ -197,30 +205,39 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
     console.warn(`Evidence is not available for company ${row.id}:`, error);
   }
 
+  const company = {
+    id: String(row.id),
+    name: row.name || "Unknown Company",
+    industry: row.industry || "Unknown Industry",
+    state: row.state || "Unknown",
+    employee_count: row.employee_count ?? 0,
+    is_target_account: Boolean(row.is_target_account),
+    created_at: row.created_at || "",
+    website: row.website,
+    linkedin_url: row.linkedin_url,
+    primary_industry: row.primary_industry,
+    sub_industry: row.sub_industry,
+    annual_revenue: row.annual_revenue,
+    ownership_type: row.ownership_type,
+    ticker: row.ticker,
+    hq_city: row.hq_city,
+    hq_state: row.hq_state,
+    hq_country: row.hq_country,
+    location_count: row.location_count,
+    naics_code: row.naics_code,
+    sic_code: row.sic_code,
+  };
+  const rankedContacts = rankContactsForCompany(contacts, evidence);
+
   return {
-    company: {
-      id: String(row.id),
-      name: row.name || "Unknown Company",
-      industry: row.industry || "Unknown Industry",
-      state: row.state || "Unknown",
-      employee_count: row.employee_count ?? 0,
-      is_target_account: Boolean(row.is_target_account),
-      created_at: row.created_at || "",
-      website: row.website,
-      linkedin_url: row.linkedin_url,
-      primary_industry: row.primary_industry,
-      sub_industry: row.sub_industry,
-      annual_revenue: row.annual_revenue,
-      ownership_type: row.ownership_type,
-      ticker: row.ticker,
-      hq_city: row.hq_city,
-      hq_state: row.hq_state,
-      hq_country: row.hq_country,
-      location_count: row.location_count,
-      naics_code: row.naics_code,
-      sic_code: row.sic_code,
-    },
+    company,
     contacts,
+    rankedContacts,
+    salesInsight: createSalesInsight({
+      company,
+      rankedContact: rankedContacts[0] || null,
+      evidence,
+    }),
     evidence,
     activityTimeline,
   };
