@@ -7,11 +7,12 @@ const navItems = [
   { href: "/", label: "Today's Opportunities" },
   { href: "/import", label: "Import Contacts" },
   { href: "/research", label: "Research Queue" },
+  { href: "/companies", label: "Companies" },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/") {
-    return pathname === "/" || pathname.startsWith("/companies");
+    return pathname === "/";
   }
 
   if (href === "/import") {

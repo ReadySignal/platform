@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { TopNavigation } from "../../components/TopNavigation";
-import { promoteResearchedContactsToToday, type OpportunityPromotionResult } from "../../services/opportunityGenerationService";
 import { getProviderRunsForJob } from "../../services/researchProviderRunService";
 import { getResearchJob, getResearchJobs, summarizeResearchJobs } from "../../services/researchService";
 import type { ResearchJob } from "../../types/ResearchJob";
@@ -72,22 +71,22 @@ function getRetryLabel(message: string | null | undefined) {
   const normalized = (message || "").toLowerCase();
 
   if (normalized.includes("incomplete")) {
-    return "Incomplete response · Retry";
+    return "Incomplete response \u00b7 Retry";
   }
 
   if (normalized.includes("timed out") || normalized.includes("longer than expected")) {
-    return "Timed out · Retry";
+    return "Timed out \u00b7 Retry";
   }
 
   if (normalized.includes("rate limit") || normalized.includes("quota")) {
-    return "Rate limited · Retry";
+    return "Rate limited \u00b7 Retry";
   }
 
   if (normalized.includes("validated")) {
-    return "Research response could not be validated · Retry";
+    return "Research response could not be validated \u00b7 Retry";
   }
 
-  return "Failed · Retry";
+  return "Failed \u00b7 Retry";
 }
 
 function getCompactStatus(
@@ -103,7 +102,7 @@ function getCompactStatus(
   const primaryRun = getPrimaryProviderRun(providerRuns);
 
   if (primaryRun?.status === "Completed") {
-    return `Completed · ${primaryRun.evidenceCount} evidence`;
+    return `Completed \u00b7 ${primaryRun.evidenceCount} evidence`;
   }
 
   if (primaryRun?.status === "No Evidence") {
@@ -141,8 +140,6 @@ export default function ResearchQueuePage() {
   const [liveResearchErrorsByJobId, setLiveResearchErrorsByJobId] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
-  const [promotionResult, setPromotionResult] = useState<OpportunityPromotionResult | null>(null);
   const summary = summarizeResearchJobs(jobs);
   const progress = summary.total > 0 ? Math.round(((summary.complete + summary.failed) / summary.total) * 100) : 0;
   function getNeedsResearchRank(job: ResearchJob) {
@@ -286,26 +283,6 @@ export default function ResearchQueuePage() {
     }
   }
 
-  async function addResearchedContactsToToday() {
-    setIsPromotingOpportunities(true);
-    setError(null);
-    setPromotionResult(null);
-
-    try {
-      const result = await promoteResearchedContactsToToday();
-      setPromotionResult(result);
-      await loadResearchQueue({ showLoading: false });
-    } catch (promotionError) {
-      setError(
-        promotionError instanceof Error
-          ? promotionError.message
-          : "Failed to add researched contacts to Today's Opportunities.",
-      );
-    } finally {
-      setIsPromotingOpportunities(false);
-    }
-  }
-
   function renderResearchTable(sectionJobs: ResearchJob[], options: { showRunAction: boolean; emptyMessage: string }) {
     if (sectionJobs.length === 0) {
       return <p className="mt-4 text-sm text-slate-500">{options.emptyMessage}</p>;
@@ -423,17 +400,12 @@ export default function ResearchQueuePage() {
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Track imported companies through live, source-backed research. Each company can run independently while the rest of the queue stays available.
               </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Contact priority is based on imported contact data and verified company evidence. Individual contact research has not been added yet.
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={addResearchedContactsToToday}
-                disabled={isPromotingOpportunities}
-                className="inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {isPromotingOpportunities ? "Adding..." : "Add researched contacts to Today"}
-              </button>
               <Link
                 href="/import"
                 className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
@@ -476,25 +448,6 @@ export default function ResearchQueuePage() {
 
           {error ? (
             <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
-          ) : null}
-          {promotionResult ? (
-            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-950">
-              <p className="font-semibold">
-                Evaluated {promotionResult.companiesEvaluated} companies and added {promotionResult.contactsAdded} contacts.
-              </p>
-              {promotionResult.skippedCompanies.length > 0 ? (
-                <div className="mt-2">
-                  <p className="font-semibold">Skipped companies</p>
-                  <ul className="mt-1 space-y-1">
-                    {promotionResult.skippedCompanies.map((company) => (
-                      <li key={`${company.companyId}-${company.reason}`}>
-                        {company.companyName}: {company.reason}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
           ) : null}
         </section>
 

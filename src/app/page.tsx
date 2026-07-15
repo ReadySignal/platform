@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
@@ -88,7 +88,9 @@ function calculateProgress(prospects: Prospect[], outcomesByProspectId: Record<n
 export default function Home() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  const [queueRefreshing, setQueueRefreshing] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<number[]>([]);
   const [savedOutcomesByProspectId, setSavedOutcomesByProspectId] = useState<Record<number, CallOutcome>>({});
   const [expandedProspectId, setExpandedProspectId] = useState<number | null>(null);
@@ -103,12 +105,39 @@ export default function Home() {
   const [conversations, setConversations] = useState(0);
   const [meetings, setMeetings] = useState(0);
 
-  useEffect(() => {
-    async function loadQueue() {
+  const loadQueue = useCallback(async (options: { initial?: boolean; showSuccess?: boolean; reconcile?: boolean } = {}) => {
+    const initial = options.initial ?? false;
+    if (initial) {
       setQueueLoading(true);
+    } else {
+      setQueueRefreshing(true);
+    }
       setQueueError(null);
+      setRefreshMessage(null);
 
       try {
+        let contactsAdded = 0;
+
+        if (options.reconcile) {
+          const response = await fetch("/api/opportunities/reconcile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          });
+          const payload = (await response.json()) as {
+            error?: string;
+            result?: { contactsAdded: number };
+          };
+
+          if (!response.ok) {
+            throw new Error(payload.error || "Failed to reconcile researched opportunities.");
+          }
+
+          contactsAdded = payload.result?.contactsAdded ?? 0;
+        }
+
         const includeDemo =
           typeof window !== "undefined" && new URLSearchParams(window.location.search).get("showDemo") === "1";
         const data = await getQueue({ includeDemo });
@@ -130,23 +159,53 @@ export default function Home() {
           setCallsCompleted(restoredProgress.callsCompleted);
           setConversations(restoredProgress.conversations);
           setMeetings(restoredProgress.meetings);
-          setExpandedProspectId(
-            data.find((prospect) => !restoredProgress.completedIds.includes(prospect.id))?.id ?? null,
-          );
+          setExpandedProspectId((current) => {
+            if (current && data.some((prospect) => prospect.id === current)) {
+              return current;
+            }
+
+            return data.find((prospect) => !restoredProgress.completedIds.includes(prospect.id))?.id ?? null;
+          });
         } catch (error) {
           console.warn("Today call outcomes are not available yet:", error);
           setExpandedProspectId(data[0]?.id ?? null);
+        }
+
+        if (options.showSuccess) {
+          setRefreshMessage(
+            contactsAdded > 0
+              ? `Opportunities updated \u00b7 ${contactsAdded} added`
+              : "Opportunities are already up to date.",
+          );
         }
       } catch (error) {
         console.error("Failed to load queue:", error);
         setQueueError(error instanceof Error ? error.message : "Unknown error");
       } finally {
         setQueueLoading(false);
+        setQueueRefreshing(false);
+      }
+  }, []);
+
+  useEffect(() => {
+    loadQueue({ initial: true });
+  }, [loadQueue]);
+
+  useEffect(() => {
+    function handleFocus() {
+      if (document.visibilityState === "visible") {
+        loadQueue();
       }
     }
 
-    loadQueue();
-  }, []);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [loadQueue]);
 
   const toggleExpanded = (prospectId: number) => {
     setExpandedProspectId((current) => (current === prospectId ? null : prospectId));
@@ -270,6 +329,19 @@ export default function Home() {
           >
             View Research Queue
           </Link>
+          <button
+            type="button"
+            onClick={() => loadQueue({ showSuccess: true, reconcile: true })}
+            disabled={queueRefreshing}
+            className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+          >
+            {queueRefreshing ? "Refreshing..." : "Refresh Opportunities"}
+          </button>
+          {refreshMessage ? (
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              {refreshMessage}
+            </span>
+          ) : null}
         </section>
         <MissionBar
           opportunitiesRemaining={opportunitiesRemaining}

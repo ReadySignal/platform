@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createEvidence, getEvidenceForCompany } from "./evidenceService";
+import { promoteResearchedCompanyContacts } from "./opportunityGenerationService";
 import {
   createProviderRun,
   getProviderRunsForJob,
@@ -21,6 +22,7 @@ export type LiveResearchResult = {
   status: "Complete" | "Failed";
   providerStatus: ProviderRunStatus;
   evidenceCount: number;
+  contactsPromoted: number;
   errorMessage: string | null;
 };
 
@@ -105,6 +107,7 @@ export async function runLiveResearchJob(
   let providerRun: ResearchProviderRun | null = null;
   let providerStatus: ProviderRunStatus = "Failed";
   let evidenceCount = 0;
+  let contactsPromoted = 0;
   let providerErrorMessage: string | null = null;
 
   try {
@@ -170,8 +173,11 @@ export async function runLiveResearchJob(
       errorMessage: null,
     });
 
+    const promotionResult = await promoteResearchedCompanyContacts(company.id);
+    contactsPromoted = promotionResult.contactsAdded;
+
     console.info(
-      `[research] Live research finished for job ${job.id}: ${providerStatus}, ${evidenceCount} evidence records.`,
+      `[research] Live research finished for job ${job.id}: ${providerStatus}, ${evidenceCount} evidence records, ${contactsPromoted} contacts promoted.`,
     );
 
     return {
@@ -179,6 +185,7 @@ export async function runLiveResearchJob(
       status: "Complete",
       providerStatus,
       evidenceCount,
+      contactsPromoted,
       errorMessage: providerErrorMessage,
     };
   } catch (orchestrationError) {
@@ -212,6 +219,7 @@ export async function runLiveResearchJob(
       status: "Failed",
       providerStatus: "Failed",
       evidenceCount,
+      contactsPromoted,
       errorMessage,
     };
   }

@@ -37,6 +37,7 @@ type CompanyDetailRow = {
         first_name: string | null;
         last_name: string | null;
         title: string | null;
+        location: string | null;
         phone: string | null;
         mobile: string | null;
         email: string | null;
@@ -116,6 +117,7 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
           first_name,
           last_name,
           title,
+          location,
           phone,
           mobile,
           email,
@@ -163,6 +165,7 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
         id: contactId,
         name: `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || "Unknown Contact",
         title: contact.title || "Unknown Title",
+        location: contact.location,
         phone: contact.phone,
         mobile: contact.mobile,
         email: contact.email,

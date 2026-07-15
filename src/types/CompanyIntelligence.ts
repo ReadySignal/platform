@@ -15,6 +15,7 @@ export type CompanyContact = {
   id: number;
   name: string;
   title: string;
+  location: string | null;
   phone: string | null;
   mobile: string | null;
   email: string | null;
