@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "../../../components/Header";
+import { TopNavigation } from "../../../components/TopNavigation";
 import { getCompanyIntelligence } from "../../../services/companyIntelligenceService";
 import type { CompanyIntelligence } from "../../../types/CompanyIntelligence";
 
@@ -72,6 +73,7 @@ export default function CompanyDetailPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <TopNavigation />
         <Header />
 
         <div>

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
+import { TopNavigation } from "../components/TopNavigation";
 import { getCallOutcomesForContactsBetween, saveCallOutcome, updateCallOutcome } from "../services/callOutcomeService";
 import { getQueue } from "../services/queueService";
 import type { CallOutcome } from "../types/CallOutcome";
@@ -246,12 +248,27 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <TopNavigation />
         <Header
           opportunitiesRemaining={opportunitiesRemaining}
           callsCompleted={callsCompleted}
           conversations={conversations}
           meetings={meetings}
         />
+        <section className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-[0_10px_35px_-28px_rgba(15,23,42,0.4)]">
+          <Link
+            href="/import"
+            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+          >
+            Add Contacts
+          </Link>
+          <Link
+            href="/research"
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            View Research Queue
+          </Link>
+        </section>
         <MissionBar
           opportunitiesRemaining={opportunitiesRemaining}
           callsCompleted={callsCompleted}
