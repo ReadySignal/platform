@@ -22,6 +22,7 @@ type ProspectCardProps = {
   outcomeError: string | null;
   onToggleExpanded: () => void;
   onStartConversation: () => void;
+  onLogAnotherAttempt: () => void;
   onDispositionChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onSaveOutcome: () => void;
@@ -41,6 +42,7 @@ export function ProspectCard({
   outcomeError,
   onToggleExpanded,
   onStartConversation,
+  onLogAnotherAttempt,
   onDispositionChange,
   onNotesChange,
   onSaveOutcome,
@@ -249,10 +251,10 @@ export function ProspectCard({
 
               <button
                 type="button"
-                onClick={onStartConversation}
+                onClick={savedOutcome ? onLogAnotherAttempt : onStartConversation}
                 className="mt-4 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition duration-200 hover:bg-slate-700"
               >
-                {savedOutcome ? "Reopen Outcome" : "Start Conversation"}
+                {savedOutcome ? "Log another attempt" : "Start Conversation"}
               </button>
 
               {isDispositionOpen ? (

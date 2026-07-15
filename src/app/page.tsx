@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
-import { getCompanies } from "../lib/queries/companies";
-import { getCallOutcomesForContact, saveCallOutcome } from "../services/callOutcomeService";
+import { getCallOutcomesForContactsBetween, saveCallOutcome } from "../services/callOutcomeService";
 import { getQueue } from "../services/queueService";
 import type { CallOutcome } from "../types/CallOutcome";
-import type { Company } from "../types/Company";
 import type { Prospect } from "../types/Prospect";
 
 function findNextIncompleteProspectId(
@@ -35,6 +32,57 @@ function findNextIncompleteProspectId(
   return null;
 }
 
+function getLocalTodayRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+function getLatestOutcomesByProspectId(prospects: Prospect[], outcomes: CallOutcome[]) {
+  const prospectIdByContactId = new Map<number, number>();
+
+  for (const prospect of prospects) {
+    if (typeof prospect.contactId === "number") {
+      prospectIdByContactId.set(prospect.contactId, prospect.id);
+    }
+  }
+
+  return outcomes.reduce<Record<number, CallOutcome>>((acc, outcome) => {
+    const prospectId = prospectIdByContactId.get(outcome.contactId);
+
+    if (typeof prospectId !== "number") {
+      return acc;
+    }
+
+    const current = acc[prospectId];
+    if (!current || new Date(outcome.createdAt).getTime() > new Date(current.createdAt).getTime()) {
+      acc[prospectId] = outcome;
+    }
+
+    return acc;
+  }, {});
+}
+
+function calculateProgress(prospects: Prospect[], outcomesByProspectId: Record<number, CallOutcome>) {
+  const latestOutcomes = Object.values(outcomesByProspectId);
+  const completedCount = latestOutcomes.length;
+
+  return {
+    completedIds: Object.keys(outcomesByProspectId).map(Number),
+    signalsRemaining: Math.max(0, prospects.length - completedCount),
+    callsCompleted: completedCount,
+    conversations: latestOutcomes.filter(
+      (outcome) => outcome.disposition === "Conversation" || outcome.disposition === "Meeting Booked",
+    ).length,
+    meetings: latestOutcomes.filter((outcome) => outcome.disposition === "Meeting Booked").length,
+  };
+}
+
 export default function Home() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
@@ -47,13 +95,10 @@ export default function Home() {
   const [notes, setNotes] = useState("");
   const [savingOutcomeId, setSavingOutcomeId] = useState<number | null>(null);
   const [outcomeError, setOutcomeError] = useState<string | null>(null);
-  const [signalsRemaining, setSignalsRemaining] = useState(25);
+  const [signalsRemaining, setSignalsRemaining] = useState(0);
   const [callsCompleted, setCallsCompleted] = useState(0);
   const [conversations, setConversations] = useState(0);
   const [meetings, setMeetings] = useState(0);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companiesLoading, setCompaniesLoading] = useState(true);
-  const [companiesError, setCompaniesError] = useState<string | null>(null);
   const [isTopRankWhyOpen, setIsTopRankWhyOpen] = useState(false);
 
   useEffect(() => {
@@ -64,44 +109,29 @@ export default function Home() {
       try {
         const data = await getQueue();
         setProspects(data);
+        setSignalsRemaining(data.length);
 
         try {
-          const latestOutcomes = await Promise.all(
-            data.map(async (prospect) => {
-              if (typeof prospect.contactId !== "number") {
-                return [prospect.id, null] as const;
-              }
-
-              const outcomes = await getCallOutcomesForContact(prospect.contactId);
-              return [prospect.id, outcomes[0] ?? null] as const;
-            }),
-          );
-          const outcomesByProspectId = latestOutcomes.reduce<Record<number, CallOutcome>>(
-            (acc, [prospectId, outcome]) => {
-              if (outcome) {
-                acc[prospectId] = outcome;
-              }
-
-              return acc;
-            },
-            {},
-          );
-          const restoredCompletedIds = Object.keys(outcomesByProspectId).map(Number);
+          const { startIso, endIso } = getLocalTodayRange();
+          const contactIds = data
+            .map((prospect) => prospect.contactId)
+            .filter((contactId): contactId is number => typeof contactId === "number");
+          const todayOutcomes = await getCallOutcomesForContactsBetween(contactIds, startIso, endIso);
+          const outcomesByProspectId = getLatestOutcomesByProspectId(data, todayOutcomes);
+          const restoredProgress = calculateProgress(data, outcomesByProspectId);
 
           setSavedOutcomesByProspectId(outcomesByProspectId);
-          setCompletedIds(restoredCompletedIds);
-          setCallsCompleted(restoredCompletedIds.length);
-          setConversations(
-            Object.values(outcomesByProspectId).filter(
-              (outcome) => outcome.disposition === "Conversation" || outcome.disposition === "Meeting Booked",
-            ).length,
+          setCompletedIds(restoredProgress.completedIds);
+          setSignalsRemaining(restoredProgress.signalsRemaining);
+          setCallsCompleted(restoredProgress.callsCompleted);
+          setConversations(restoredProgress.conversations);
+          setMeetings(restoredProgress.meetings);
+          setExpandedProspectId(
+            data.find((prospect) => !restoredProgress.completedIds.includes(prospect.id))?.id ?? null,
           );
-          setMeetings(
-            Object.values(outcomesByProspectId).filter((outcome) => outcome.disposition === "Meeting Booked").length,
-          );
-          setSignalsRemaining(Math.max(0, 25 - restoredCompletedIds.length));
         } catch (error) {
-          console.warn("Call outcomes are not available yet:", error);
+          console.warn("Today call outcomes are not available yet:", error);
+          setExpandedProspectId(data[0]?.id ?? null);
         }
       } catch (error) {
         console.error("Failed to load queue:", error);
@@ -114,36 +144,15 @@ export default function Home() {
     loadQueue();
   }, []);
 
-  useEffect(() => {
-    async function loadCompanies() {
-      setCompaniesLoading(true);
-      setCompaniesError(null);
-
-      try {
-        const data = await getCompanies();
-        setCompanies(data);
-      } catch (error) {
-        console.error("Failed to load companies:", error);
-        setCompaniesError(error instanceof Error ? error.message : "Unknown error");
-      } finally {
-        setCompaniesLoading(false);
-      }
-    }
-
-    loadCompanies();
-  }, []);
-
   const toggleExpanded = (prospectId: number) => {
     setExpandedProspectId((current) => (current === prospectId ? null : prospectId));
   };
 
   const startConversation = (prospectId: number) => {
-    const savedOutcome = savedOutcomesByProspectId[prospectId];
-
     setExpandedProspectId(prospectId);
     setActiveDispositionId(prospectId);
-    setSelectedDisposition(savedOutcome?.disposition ?? null);
-    setNotes(savedOutcome?.notes ?? "");
+    setSelectedDisposition(null);
+    setNotes("");
     setOutcomeError(null);
   };
 
@@ -171,8 +180,6 @@ export default function Home() {
       return;
     }
 
-    const wasCompleted = completedIds.includes(prospectId);
-
     setSavingOutcomeId(prospectId);
     setOutcomeError(null);
 
@@ -183,32 +190,23 @@ export default function Home() {
         disposition: selectedDisposition,
         notes,
       });
-
-      const nextCompletedIds = wasCompleted ? completedIds : [...completedIds, prospectId];
-      const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextCompletedIds, prospects);
-
-      setSavedOutcomesByProspectId((current) => ({
-        ...current,
+      const nextOutcomesByProspectId = {
+        ...savedOutcomesByProspectId,
         [prospectId]: savedOutcome,
-      }));
-      setCompletedIds(nextCompletedIds);
+      };
+      const nextProgress = calculateProgress(prospects, nextOutcomesByProspectId);
+      const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextProgress.completedIds, prospects);
+
+      setSavedOutcomesByProspectId(nextOutcomesByProspectId);
+      setCompletedIds(nextProgress.completedIds);
+      setSignalsRemaining(nextProgress.signalsRemaining);
+      setCallsCompleted(nextProgress.callsCompleted);
+      setConversations(nextProgress.conversations);
+      setMeetings(nextProgress.meetings);
       setExpandedProspectId(nextExpandedProspectId);
       setActiveDispositionId(null);
       setSelectedDisposition(null);
       setNotes("");
-
-      if (!wasCompleted) {
-        setSignalsRemaining((current) => Math.max(0, current - 1));
-        setCallsCompleted((current) => current + 1);
-
-        if (selectedDisposition === "Conversation" || selectedDisposition === "Meeting Booked") {
-          setConversations((current) => current + 1);
-        }
-
-        if (selectedDisposition === "Meeting Booked") {
-          setMeetings((current) => current + 1);
-        }
-      }
     } catch (error) {
       console.error("Failed to save outcome:", error);
       setOutcomeError(error instanceof Error ? error.message : "Failed to save call outcome. Try again.");
@@ -216,6 +214,8 @@ export default function Home() {
       setSavingOutcomeId(null);
     }
   };
+
+  const isQueueComplete = prospects.length > 0 && completedIds.length === prospects.length;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
@@ -235,7 +235,7 @@ export default function Home() {
               className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800"
             >
               Why was this ranked #1?
-              <span className="text-slate-400">{isTopRankWhyOpen ? "▾" : "▸"}</span>
+              <span className="text-slate-400">{isTopRankWhyOpen ? "v" : ">"}</span>
             </button>
 
             {isTopRankWhyOpen ? (
@@ -266,6 +266,10 @@ export default function Home() {
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-5 text-sm text-rose-700 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
             Failed to load live queue: {queueError}
           </div>
+        ) : isQueueComplete ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-sm font-semibold text-emerald-800 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
+            Today&apos;s queue is complete.
+          </div>
         ) : (
           <Queue
             prospects={prospects}
@@ -279,57 +283,13 @@ export default function Home() {
             outcomeError={outcomeError}
             onToggleExpanded={toggleExpanded}
             onStartConversation={startConversation}
+            onLogAnotherAttempt={startConversation}
             onDispositionChange={setSelectedDisposition}
             onNotesChange={setNotes}
             onSaveOutcome={saveOutcome}
             onCancelDisposition={cancelDisposition}
           />
         )}
-        <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-5 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Company Sources
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                {companiesLoading
-                  ? "Loading companies..."
-                  : companiesError
-                    ? companiesError
-                    : `${companies.length} companies from Supabase`}
-              </p>
-            </div>
-
-            {!companiesLoading && !companiesError && companies.length > 0 ? (
-              <div className="space-y-2">
-                {companies.map((company) => (
-                  <div key={company.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex flex-col gap-1">
-                      <Link
-                        href={`/companies/${company.id}`}
-                        className="font-semibold text-slate-900 transition hover:text-slate-600"
-                      >
-                        {company.name}
-                      </Link>
-                      <div className="flex flex-wrap gap-2 text-[12px] text-slate-600">
-                        <span>{company.industry}</span>
-                        <span>•</span>
-                        <span>{company.state}</span>
-                        <span>•</span>
-                        <span>{company.employee_count.toLocaleString()} employees</span>
-                        <span>•</span>
-                        <span className={company.is_target_account ? "font-medium text-emerald-700" : "text-slate-500"}>
-                          {company.is_target_account ? "Target Account: Yes" : "Target Account: No"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <p className="text-center text-sm text-slate-500">Loaded {prospects.length} live prospects</p>
       </div>
     </main>
   );

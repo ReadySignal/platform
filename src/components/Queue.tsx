@@ -14,6 +14,7 @@ type QueueProps = {
   outcomeError: string | null;
   onToggleExpanded: (prospectId: number) => void;
   onStartConversation: (prospectId: number) => void;
+  onLogAnotherAttempt: (prospectId: number) => void;
   onDispositionChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onSaveOutcome: (prospectId: number) => void;
@@ -32,6 +33,7 @@ export function Queue({
   outcomeError,
   onToggleExpanded,
   onStartConversation,
+  onLogAnotherAttempt,
   onDispositionChange,
   onNotesChange,
   onSaveOutcome,
@@ -54,6 +56,7 @@ export function Queue({
           outcomeError={activeDispositionId === prospect.id ? outcomeError : null}
           onToggleExpanded={() => onToggleExpanded(prospect.id)}
           onStartConversation={() => onStartConversation(prospect.id)}
+          onLogAnotherAttempt={() => onLogAnotherAttempt(prospect.id)}
           onDispositionChange={onDispositionChange}
           onNotesChange={onNotesChange}
           onSaveOutcome={() => onSaveOutcome(prospect.id)}

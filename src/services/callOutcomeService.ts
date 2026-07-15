@@ -53,3 +53,27 @@ export async function getCallOutcomesForContact(contactId: number): Promise<Call
 
   return ((data as CallOutcomeRow[]) || []).map(toCallOutcome);
 }
+
+export async function getCallOutcomesForContactsBetween(
+  contactIds: number[],
+  startIso: string,
+  endIso: string,
+): Promise<CallOutcome[]> {
+  if (contactIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("call_outcomes")
+    .select("id, contact_id, signal_id, disposition, notes, created_at")
+    .in("contact_id", contactIds)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch call outcomes: ${error.message}`);
+  }
+
+  return ((data as CallOutcomeRow[]) || []).map(toCallOutcome);
+}
