@@ -28,7 +28,10 @@ const confidenceValues = new Set(["High", "Medium", "Low"]);
 const maxStoredEvidencePerCompany = 10;
 
 function isRetryableProviderError(error: unknown) {
-  return error instanceof OpenAIResearchProviderError && (error.code === "timeout" || error.code === "validation");
+  return (
+    error instanceof OpenAIResearchProviderError &&
+    (error.code === "timeout" || error.code === "validation" || error.code === "incomplete")
+  );
 }
 
 function isNonEmpty(value: string | null | undefined) {

@@ -4,12 +4,12 @@ import type { EvidenceCandidate, ProviderResult, ResearchCompany, ResearchProvid
 
 export class OpenAIResearchProviderError extends Error {
   fatal: boolean;
-  code: "timeout" | "validation" | "provider-error";
+  code: "timeout" | "validation" | "incomplete" | "provider-error";
 
   constructor(
     message: string,
     fatal = false,
-    code: "timeout" | "validation" | "provider-error" = "provider-error",
+    code: "timeout" | "validation" | "incomplete" | "provider-error" = "provider-error",
   ) {
     super(message);
     this.name = "OpenAIResearchProviderError";
@@ -66,12 +66,13 @@ type OpenAIResponseBody = {
 export const OPENAI_WEB_RESEARCH_MODEL = "gpt-5.5";
 export const OPENAI_WEB_RESEARCH_MAX_FINDINGS = 10;
 export const OPENAI_WEB_RESEARCH_TIMEOUT_MS = 90000;
-export const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = 1600;
+export const OPENAI_WEB_RESEARCH_MAX_OUTPUT_TOKENS = 2400;
 export const OPENAI_WEB_RESEARCH_MAX_TOOL_CALLS = 4;
 export const OPENAI_WEB_RESEARCH_CONTEXT_SIZE = "low";
 export const OPENAI_WEB_RESEARCH_TIMEOUT_MESSAGE = "Research took longer than expected. Try this company again.";
 export const OPENAI_WEB_RESEARCH_VALIDATION_MESSAGE =
   "Research response could not be validated. Try this company again.";
+export const OPENAI_WEB_RESEARCH_INCOMPLETE_MESSAGE = "Research response was incomplete. Try this company again.";
 
 const researchOutputJsonSchema = {
   type: "object",
@@ -144,7 +145,10 @@ ${formatCompanyFacts(company)}
 Window: last ${researchWindowDays} days. Prefer company newsroom/press releases, company website, reputable industry publications, and reputable news organizations.
 Look only for: ${allowedEvidenceTypes.join(", ")}.
 Only search for NEW developments. Do not repeat known company facts as findings.
-Do not research contacts. Do not infer, invent, or include unsupported claims. Return at most ${OPENAI_WEB_RESEARCH_MAX_FINDINGS} findings.
+Do not research contacts. Do not infer, invent, or include unsupported claims.
+Propose at most 5 findings before validation.
+Each finding must use one short headline and a one-sentence summary.
+Do not include long article descriptions, background paragraphs, or repeated source details.
 The response must follow the provided structured output schema.
 `;
 }
@@ -153,17 +157,27 @@ function getValidationError() {
   return new OpenAIResearchProviderError(OPENAI_WEB_RESEARCH_VALIDATION_MESSAGE, true, "validation");
 }
 
+function getIncompleteError() {
+  return new OpenAIResearchProviderError(OPENAI_WEB_RESEARCH_INCOMPLETE_MESSAGE, true, "incomplete");
+}
+
 function logStructuredOutputValidationFailure(company: ResearchCompany, responseBody: unknown, validationErrors: string[], parsedField?: string) {
   const response = responseBody as OpenAIResponseBody;
+  const structuredOutput = extractStructuredOutput(responseBody);
+  const verifiedSourceUrls = getVerifiedSourceUrls(responseBody);
+
   console.warn("[research] OpenAI structured output validation failed.", {
     companyId: company.id,
+    companyName: company.name,
     responseStatus: response.status,
     finishReason: getResponseFinishReason(responseBody),
     outputWasTruncated: wasResponseTruncated(responseBody),
-    parsedField,
+    parsedField: parsedField ?? structuredOutput.parsedField,
+    structuredOutputExisted: structuredOutput.parsedOutput !== undefined || Boolean(structuredOutput.rawOutputText.trim()),
     validationErrors,
     webSearchSourcesExisted: hasWebSearchSources(responseBody),
     urlCitationAnnotationsExisted: hasUrlCitationAnnotations(responseBody),
+    verifiedSourcesExisted: verifiedSourceUrls.size > 0,
   });
 }
 
@@ -332,7 +346,7 @@ function parseResearchOutput(company: ResearchCompany, responseBody: unknown): O
       [`Response was incomplete before full structured output was available: ${response.incomplete_details?.reason || "unknown"}.`],
       structuredOutput.parsedField,
     );
-    throw getValidationError();
+    throw getIncompleteError();
   }
 
   if (response.status && response.status !== "completed") {
@@ -372,11 +386,12 @@ function parseResearchOutput(company: ResearchCompany, responseBody: unknown): O
     try {
       parsedOutput = JSON.parse(rawOutputText);
     } catch {
-      const validationErrors = wasResponseTruncated(responseBody)
+      const truncated = wasResponseTruncated(responseBody);
+      const validationErrors = truncated
         ? ["Structured output was truncated before complete JSON could be parsed."]
         : ["Raw structured output text was not valid JSON."];
       logStructuredOutputValidationFailure(company, responseBody, validationErrors, structuredOutput.parsedField);
-      throw getValidationError();
+      throw truncated ? getIncompleteError() : getValidationError();
     }
   }
 
@@ -483,7 +498,12 @@ function normalizeFinding(
   }
 
   if (!verifiedSourceUrls.has(normalizedSourceUrl)) {
-    console.warn(`[research] Discarded unsupported citation for company ${company.id}.`);
+    console.warn("[research] Discarded unsupported citation.", {
+      companyId: company.id,
+      companyName: company.name,
+      sourceHost: normalizedSourceUrl ? new URL(normalizedSourceUrl).hostname : "unknown",
+      verifiedSourcesExisted: verifiedSourceUrls.size > 0,
+    });
     return null;
   }
 
@@ -581,17 +601,35 @@ export const openAIWebResearchProvider: ResearchProvider = {
       throw new OpenAIResearchProviderError("OpenAI returned malformed response JSON.", true);
     }
 
+    const parsed = parseResearchOutput(company, responseBody);
     const verifiedSourceUrls = getVerifiedSourceUrls(responseBody);
-    if (verifiedSourceUrls.size === 0) {
-      console.warn(`[research] OpenAI web search returned no verifiable sources for company ${company.id}.`);
+
+    if ((parsed.findings || []).length === 0) {
       return {
         status: "No Evidence",
         evidence: [],
-        errorMessage: "Web search returned no verifiable sources.",
+        errorMessage: "No evidence found.",
       };
     }
 
-    const parsed = parseResearchOutput(company, responseBody);
+    if (verifiedSourceUrls.size === 0) {
+      console.warn("[research] OpenAI web search returned findings without verifiable sources.", {
+        companyId: company.id,
+        companyName: company.name,
+        parsedField: extractStructuredOutput(responseBody).parsedField,
+        finishReason: getResponseFinishReason(responseBody),
+        outputWasTruncated: wasResponseTruncated(responseBody),
+        structuredOutputExisted: true,
+        webSearchSourcesExisted: hasWebSearchSources(responseBody),
+        urlCitationAnnotationsExisted: hasUrlCitationAnnotations(responseBody),
+      });
+      return {
+        status: "No Evidence",
+        evidence: [],
+        errorMessage: "No evidence found.",
+      };
+    }
+
     const evidence = (parsed.findings || [])
       .slice(0, OPENAI_WEB_RESEARCH_MAX_FINDINGS)
       .map((finding) => normalizeFinding(company, finding, verifiedSourceUrls))
@@ -600,6 +638,7 @@ export const openAIWebResearchProvider: ResearchProvider = {
     return {
       status: evidence.length > 0 ? "Completed" : "No Evidence",
       evidence,
+      errorMessage: evidence.length > 0 ? null : "No evidence found.",
     };
   },
 };
