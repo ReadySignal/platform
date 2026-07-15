@@ -1,5 +1,6 @@
 import type { CallOutcome } from "./CallOutcome";
 import type { Company } from "./Company";
+import type { Evidence } from "./Evidence";
 
 export type CompanySignal = {
   id: number;
@@ -45,5 +46,6 @@ export type CompanyActivityItem =
 export type CompanyIntelligence = {
   company: Company;
   contacts: CompanyContact[];
+  evidence: Evidence[];
   activityTimeline: CompanyActivityItem[];
 };

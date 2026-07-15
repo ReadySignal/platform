@@ -90,7 +90,7 @@ export function ProspectCard({
               {prospect.companyId ? (
                 <Link
                   href={`/companies/${prospect.companyId}`}
-                  className="truncate font-medium text-slate-700 transition hover:text-slate-950"
+                  className="truncate font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 transition hover:text-slate-950 hover:decoration-slate-500"
                 >
                   {prospect.company}
                 </Link>

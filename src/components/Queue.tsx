@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useState } from "react";
 import type { CallOutcome } from "../types/CallOutcome";
 import type { Prospect } from "../types/Prospect";
@@ -93,6 +94,21 @@ function Indicator({ label, active }: { label: string; active: boolean }) {
   );
 }
 
+function CompanyLink({ prospect, className }: { prospect: Prospect; className: string }) {
+  if (!prospect.companyId) {
+    return <span className={className}>{prospect.company}</span>;
+  }
+
+  return (
+    <Link
+      href={`/companies/${prospect.companyId}`}
+      className={`${className} font-medium underline decoration-slate-300 underline-offset-4 transition hover:text-slate-950 hover:decoration-slate-500`}
+    >
+      {prospect.company}
+    </Link>
+  );
+}
+
 function PrimaryWorkspace({
   prospect,
   isDispositionOpen,
@@ -140,7 +156,7 @@ function PrimaryWorkspace({
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{prospect.name}</h1>
               <p className="mt-2 text-base text-slate-600">{prospect.title}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-500">
-                <span>{prospect.company}</span>
+                <CompanyLink prospect={prospect} className="text-slate-600" />
                 <span>|</span>
                 <span>{prospect.location}</span>
               </div>
@@ -270,7 +286,7 @@ export function Queue({
                 <div key={prospect.id} className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-900">{prospect.name}</p>
-                    <p className="mt-1 truncate text-sm text-slate-500">{prospect.company}</p>
+                    <CompanyLink prospect={prospect} className="mt-1 block truncate text-sm text-slate-500" />
                   </div>
                   <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-sm font-semibold text-slate-700">
                     {signal.score}%
@@ -324,7 +340,7 @@ export function Queue({
                             Completed Opportunity
                           </p>
                           <p className="mt-2 text-sm font-semibold text-slate-950">{prospect.name}</p>
-                          <p className="mt-1 text-sm text-slate-600">{prospect.company}</p>
+                          <CompanyLink prospect={prospect} className="mt-1 inline-block text-sm text-slate-600" />
                           <dl className="mt-3 grid gap-2 text-sm">
                             <div>
                               <dt className="font-semibold text-slate-500">Disposition</dt>

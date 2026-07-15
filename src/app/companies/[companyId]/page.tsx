@@ -68,6 +68,7 @@ export default function CompanyDetailPage() {
     () => companyIntelligence?.contacts.reduce((total, contact) => total + contact.callOutcomes.length, 0) ?? 0,
     [companyIntelligence],
   );
+  const evidenceCount = companyIntelligence?.evidence.length ?? 0;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
@@ -126,6 +127,50 @@ export default function CompanyDetailPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Outcomes</p>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)]">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Evidence</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {evidenceCount} source-backed {evidenceCount === 1 ? "record" : "records"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 divide-y divide-slate-100">
+                {companyIntelligence.evidence.length > 0 ? (
+                  companyIntelligence.evidence.slice(0, 5).map((evidence) => (
+                    <article key={evidence.id} className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-950">{evidence.headline}</p>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                            {evidence.evidenceType}
+                          </span>
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+                            {evidence.confidence}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {evidence.sourceName} - {formatDate(evidence.publishedAt)}
+                        </p>
+                      </div>
+                      <a
+                        href={evidence.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-semibold text-slate-600 transition hover:text-slate-950"
+                      >
+                        View source
+                      </a>
+                    </article>
+                  ))
+                ) : (
+                  <p className="py-3 text-sm text-slate-500">No source-backed evidence has been stored yet.</p>
+                )}
               </div>
             </section>
 

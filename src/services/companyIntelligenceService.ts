@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { getCallOutcomesForContact } from "./callOutcomeService";
+import { getEvidenceForCompany } from "./evidenceService";
 import type {
   CompanyActivityItem,
   CompanyContact,
@@ -162,6 +163,13 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
       })),
     ])
     .sort(sortByDateDescending);
+  let evidence: CompanyIntelligence["evidence"] = [];
+
+  try {
+    evidence = await getEvidenceForCompany(row.id);
+  } catch (error) {
+    console.warn(`Evidence is not available for company ${row.id}:`, error);
+  }
 
   return {
     company: {
@@ -174,6 +182,7 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
       created_at: row.created_at || "",
     },
     contacts,
+    evidence,
     activityTimeline,
   };
 }

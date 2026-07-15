@@ -251,6 +251,21 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function CompanyNameLink({ companyId, companyName }: { companyId: string | number | null; companyName: string }) {
+  if (companyId === null) {
+    return <span>{companyName}</span>;
+  }
+
+  return (
+    <Link
+      href={`/companies/${companyId}`}
+      className="font-medium underline decoration-slate-300 underline-offset-4 transition hover:text-slate-950 hover:decoration-slate-500"
+    >
+      {companyName}
+    </Link>
+  );
+}
+
 export default function AnalyzePage() {
   const [importRuns, setImportRuns] = useState<ImportRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -530,7 +545,11 @@ export default function AnalyzePage() {
                               </span>
                             </div>
                             <p className="mt-1 text-sm text-slate-600">
-                              {contact.title || "Unknown title"} at {contact.company?.name || "Unknown company"}
+                              {contact.title || "Unknown title"} at{" "}
+                              <CompanyNameLink
+                                companyId={contact.companyId}
+                                companyName={contact.company?.name || "Unknown company"}
+                              />
                             </p>
                             <p className="mt-2 text-sm font-medium text-slate-800">{analysis.primaryReason}</p>
                             {analysis.warnings.length > 0 ? (

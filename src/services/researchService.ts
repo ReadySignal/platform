@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { CreateResearchJobsResult, ResearchJob, ResearchJobSummary, ResearchStatus } from "../types/ResearchJob";
+import type { ResearchCompany } from "../types/research";
 
 type ResearchCompanyRow = {
   company_id: string | number | null;
@@ -34,6 +35,15 @@ type ResearchJobRow = {
     | null;
 };
 
+type ResearchCompanyDetailRow = {
+  id: string | number;
+  name: string | null;
+  industry: string | null;
+  state: string | null;
+  employee_count: number | null;
+  is_target_account: boolean | null;
+};
+
 function toCompany(row: ResearchCompanyRow) {
   const company = Array.isArray(row.companies) ? row.companies[0] ?? null : row.companies;
 
@@ -60,6 +70,17 @@ function toResearchJob(row: ResearchJobRow): ResearchJob {
     provider: row.provider,
     errorMessage: row.error_message,
     createdAt: row.created_at,
+  };
+}
+
+function toResearchCompany(row: ResearchCompanyDetailRow): ResearchCompany {
+  return {
+    id: Number(row.id),
+    name: row.name || "Unknown Company",
+    industry: row.industry,
+    state: row.state,
+    employeeCount: row.employee_count,
+    isTargetAccount: row.is_target_account,
   };
 }
 
@@ -101,6 +122,57 @@ export async function getResearchJobs(): Promise<ResearchJob[]> {
   }
 
   return (((data as unknown) as ResearchJobRow[]) || []).map(toResearchJob);
+}
+
+export async function getResearchCompany(companyId: number): Promise<ResearchCompany> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id, name, industry, state, employee_count, is_target_account")
+    .eq("id", companyId)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to load research company: ${error.message}`);
+  }
+
+  return toResearchCompany(data as ResearchCompanyDetailRow);
+}
+
+export async function updateResearchJob(
+  researchJobId: number,
+  update: {
+    status: ResearchStatus;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    provider?: string | null;
+    errorMessage?: string | null;
+  },
+): Promise<void> {
+  const payload: Record<string, string | null> = {
+    status: update.status,
+  };
+
+  if (update.startedAt !== undefined) {
+    payload.started_at = update.startedAt;
+  }
+  if (update.completedAt !== undefined) {
+    payload.completed_at = update.completedAt;
+  }
+  if (update.provider !== undefined) {
+    payload.provider = update.provider;
+  }
+  if (update.errorMessage !== undefined) {
+    payload.error_message = update.errorMessage;
+  }
+
+  const { error } = await supabase
+    .from("research_jobs")
+    .update(payload)
+    .eq("id", researchJobId);
+
+  if (error) {
+    throw new Error(`Failed to update research job: ${error.message}`);
+  }
 }
 
 export async function createWaitingResearchJobsForImportRun(importRunId: number): Promise<CreateResearchJobsResult> {
