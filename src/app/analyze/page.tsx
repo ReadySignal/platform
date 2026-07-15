@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Header } from "../../components/Header";
+import { PageHeader } from "../../components/PageHeader";
 import { TopNavigation } from "../../components/TopNavigation";
 import {
   createImportAnalysisSignals,
@@ -392,13 +392,16 @@ export default function AnalyzePage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <TopNavigation />
-        <Header />
+        <PageHeader
+          eyebrow="Import Analysis"
+          title="Analyze Imported Contacts"
+          supportingText="Rank contacts using only the information contained in the uploaded list."
+        />
 
         <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Import Analysis</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Analyze imported contacts</h1>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Source</p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 This analysis uses only the information in your uploaded list. Public research has not been added yet.
               </p>

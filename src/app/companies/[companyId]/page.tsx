@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Header } from "../../../components/Header";
 import { TopNavigation } from "../../../components/TopNavigation";
 import { getCompanyIntelligence } from "../../../services/companyIntelligenceService";
 import type { CompanyIntelligence } from "../../../types/CompanyIntelligence";
@@ -74,7 +73,6 @@ export default function CompanyDetailPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <TopNavigation />
-        <Header />
 
         <div>
           <Link href="/" className="text-sm font-semibold text-slate-600 transition hover:text-slate-950">
@@ -96,7 +94,7 @@ export default function CompanyDetailPage() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-semibold text-slate-950">{companyIntelligence.company.name}</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{companyIntelligence.company.name}</h1>
                     <span
                       className={
                         companyIntelligence.company.is_target_account

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, DragEvent, useMemo, useState } from "react";
-import { Header } from "../../components/Header";
+import { PageHeader } from "../../components/PageHeader";
 import { TopNavigation } from "../../components/TopNavigation";
 import {
   createImportCompanies,
@@ -528,15 +528,16 @@ export default function ImportPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <TopNavigation />
-        <Header />
+        <PageHeader
+          eyebrow="CSV Import"
+          title="Import Contacts"
+          supportingText="Upload and validate a contact list before adding it to ReadySignal."
+        />
 
         <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)]">
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">CSV Import</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Import companies and contacts</h1>
-            <p className="text-sm leading-6 text-slate-600">
-              Upload a CSV, confirm column mappings, review validation, then import clean contacts into Supabase.
-            </p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Upload</p>
+            <p className="text-sm leading-6 text-slate-600">Choose a CSV, then confirm mappings and validation before import.</p>
           </div>
 
           <label
