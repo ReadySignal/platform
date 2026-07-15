@@ -16,6 +16,7 @@ type QueueContactRow = {
   email: string | null;
   companies:
     | {
+        id: string | number;
         name: string | null;
         industry: string | null;
         state: string | null;
@@ -37,6 +38,7 @@ type QueueContactRow = {
 
 type ContactGroup = {
   contactId: string | number;
+  companyId: string | number | null;
   firstName: string;
   lastName: string;
   title: string;
@@ -133,6 +135,7 @@ function toProspect(item: ContactGroup & QueueItem, id: number): Prospect {
   return {
     id,
     contactId: Number(item.contactId),
+    companyId: item.companyId === null ? undefined : String(item.companyId),
     name: name || "Unknown Contact",
     title: item.title || "Unknown Title",
     company: item.companyName || "Unknown Company",
@@ -193,6 +196,7 @@ export async function getQueue(): Promise<Prospect[]> {
           mobile,
           email,
           companies:company_id (
+            id,
             name,
             industry,
             state,
@@ -239,6 +243,7 @@ export async function getQueue(): Promise<Prospect[]> {
 
       groupedByContact.set(contactIdKey, {
         contactId: contact.id,
+        companyId: company?.id ?? null,
         firstName: contact.first_name || "",
         lastName: contact.last_name || "",
         title: contact.title || "",

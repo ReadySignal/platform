@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { CallOutcome } from "../types/CallOutcome";
 import type { Prospect } from "../types/Prospect";
@@ -70,11 +71,7 @@ export function ProspectCard({
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)] transition duration-200">
-      <button
-        type="button"
-        onClick={onToggleExpanded}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left sm:px-5"
-      >
+      <div className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 font-semibold text-white">
             {String(index + 1).padStart(2, "0")}
@@ -88,7 +85,16 @@ export function ProspectCard({
             </div>
 
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span className="truncate">{prospect.company}</span>
+              {prospect.companyId ? (
+                <Link
+                  href={`/companies/${prospect.companyId}`}
+                  className="truncate font-medium text-slate-700 transition hover:text-slate-950"
+                >
+                  {prospect.company}
+                </Link>
+              ) : (
+                <span className="truncate">{prospect.company}</span>
+              )}
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
@@ -109,9 +115,16 @@ export function ProspectCard({
               Completed
             </span>
           ) : null}
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-500 transition hover:bg-slate-50"
+          >
+            {isExpanded ? "Close" : "Open"}
+          </button>
           <div className="text-sm font-medium text-slate-400">{isExpanded ? "▾" : "▸"}</div>
         </div>
-      </button>
+      </div>
 
       {isExpanded ? (
         <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-4 sm:px-5">

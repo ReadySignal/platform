@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
@@ -304,7 +305,12 @@ export default function Home() {
                 {companies.map((company) => (
                   <div key={company.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="flex flex-col gap-1">
-                      <p className="font-semibold text-slate-900">{company.name}</p>
+                      <Link
+                        href={`/companies/${company.id}`}
+                        className="font-semibold text-slate-900 transition hover:text-slate-600"
+                      >
+                        {company.name}
+                      </Link>
                       <div className="flex flex-wrap gap-2 text-[12px] text-slate-600">
                         <span>{company.industry}</span>
                         <span>•</span>

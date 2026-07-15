@@ -1,0 +1,49 @@
+import type { CallOutcome } from "./CallOutcome";
+import type { Company } from "./Company";
+
+export type CompanySignal = {
+  id: number;
+  signalType: string;
+  headline: string;
+  details: string | null;
+  occurredAt: string | null;
+  scorePoints: number;
+};
+
+export type CompanyContact = {
+  id: number;
+  name: string;
+  title: string;
+  phone: string | null;
+  mobile: string | null;
+  email: string | null;
+  relevantContext: string | null;
+  whyToday: string | null;
+  activeSignals: CompanySignal[];
+  callOutcomes: CallOutcome[];
+};
+
+export type CompanyActivityItem =
+  | {
+      id: string;
+      type: "signal";
+      contactName: string;
+      label: string;
+      detail: string | null;
+      date: string | null;
+      scorePoints: number;
+    }
+  | {
+      id: string;
+      type: "outcome";
+      contactName: string;
+      label: string;
+      detail: string | null;
+      date: string | null;
+    };
+
+export type CompanyIntelligence = {
+  company: Company;
+  contacts: CompanyContact[];
+  activityTimeline: CompanyActivityItem[];
+};

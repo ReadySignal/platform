@@ -1,6 +1,7 @@
 export interface Prospect {
   id: number;
   contactId?: number;
+  companyId?: string;
   name: string;
   title: string;
   company: string;
