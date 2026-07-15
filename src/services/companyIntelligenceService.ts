@@ -16,6 +16,19 @@ type CompanyDetailRow = {
   employee_count: number | null;
   is_target_account: boolean | null;
   created_at: string | null;
+  website: string | null;
+  linkedin_url: string | null;
+  primary_industry: string | null;
+  sub_industry: string | null;
+  annual_revenue: number | null;
+  ownership_type: string | null;
+  ticker: string | null;
+  hq_city: string | null;
+  hq_state: string | null;
+  hq_country: string | null;
+  location_count: number | null;
+  naics_code: string | null;
+  sic_code: string | null;
   contacts:
     | Array<{
         id: string | number;
@@ -81,6 +94,19 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
         employee_count,
         is_target_account,
         created_at,
+        website,
+        linkedin_url,
+        primary_industry,
+        sub_industry,
+        annual_revenue,
+        ownership_type,
+        ticker,
+        hq_city,
+        hq_state,
+        hq_country,
+        location_count,
+        naics_code,
+        sic_code,
         contacts (
           id,
           first_name,
@@ -180,6 +206,19 @@ export async function getCompanyIntelligence(companyId: string): Promise<Company
       employee_count: row.employee_count ?? 0,
       is_target_account: Boolean(row.is_target_account),
       created_at: row.created_at || "",
+      website: row.website,
+      linkedin_url: row.linkedin_url,
+      primary_industry: row.primary_industry,
+      sub_industry: row.sub_industry,
+      annual_revenue: row.annual_revenue,
+      ownership_type: row.ownership_type,
+      ticker: row.ticker,
+      hq_city: row.hq_city,
+      hq_state: row.hq_state,
+      hq_country: row.hq_country,
+      location_count: row.location_count,
+      naics_code: row.naics_code,
+      sic_code: row.sic_code,
     },
     contacts,
     evidence,

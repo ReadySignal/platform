@@ -16,6 +16,20 @@ type ResearchCompanyRow = {
     | null;
 };
 
+type ImportRunCompanyRow = {
+  company_id: string | number | null;
+  companies:
+    | {
+        id: string | number;
+        name: string | null;
+      }
+    | Array<{
+        id: string | number;
+        name: string | null;
+      }>
+    | null;
+};
+
 type ResearchJobRow = {
   id: string | number;
   company_id: string | number;
@@ -42,9 +56,32 @@ type ResearchCompanyDetailRow = {
   state: string | null;
   employee_count: number | null;
   is_target_account: boolean | null;
+  website: string | null;
+  primary_industry: string | null;
+  sub_industry: string | null;
+  annual_revenue: number | null;
+  ownership_type: string | null;
+  ticker: string | null;
+  hq_city: string | null;
+  hq_state: string | null;
+  hq_country: string | null;
+  location_count: number | null;
 };
 
 function toCompany(row: ResearchCompanyRow) {
+  const company = Array.isArray(row.companies) ? row.companies[0] ?? null : row.companies;
+
+  if (!company || row.company_id === null) {
+    return null;
+  }
+
+  return {
+    id: Number(row.company_id),
+    name: company.name || "Unknown Company",
+  };
+}
+
+function toLinkedCompany(row: ImportRunCompanyRow) {
   const company = Array.isArray(row.companies) ? row.companies[0] ?? null : row.companies;
 
   if (!company || row.company_id === null) {
@@ -81,6 +118,16 @@ function toResearchCompany(row: ResearchCompanyDetailRow): ResearchCompany {
     state: row.state,
     employeeCount: row.employee_count,
     isTargetAccount: row.is_target_account,
+    website: row.website,
+    primaryIndustry: row.primary_industry,
+    subIndustry: row.sub_industry,
+    annualRevenue: row.annual_revenue,
+    ownershipType: row.ownership_type,
+    ticker: row.ticker,
+    hqCity: row.hq_city,
+    hqState: row.hq_state,
+    hqCountry: row.hq_country,
+    locationCount: row.location_count,
   };
 }
 
@@ -124,10 +171,55 @@ export async function getResearchJobs(): Promise<ResearchJob[]> {
   return (((data as unknown) as ResearchJobRow[]) || []).map(toResearchJob);
 }
 
+export async function getResearchJob(researchJobId: number): Promise<ResearchJob> {
+  const { data, error } = await supabase
+    .from("research_jobs")
+    .select(
+      `
+        id,
+        company_id,
+        status,
+        started_at,
+        completed_at,
+        provider,
+        error_message,
+        created_at,
+        companies:company_id (
+          name
+        )
+      `,
+    )
+    .eq("id", researchJobId)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to load research job: ${error.message}`);
+  }
+
+  return toResearchJob(data as ResearchJobRow);
+}
+
 export async function getResearchCompany(companyId: number): Promise<ResearchCompany> {
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, industry, state, employee_count, is_target_account")
+    .select(`
+      id,
+      name,
+      industry,
+      state,
+      employee_count,
+      is_target_account,
+      website,
+      primary_industry,
+      sub_industry,
+      annual_revenue,
+      ownership_type,
+      ticker,
+      hq_city,
+      hq_state,
+      hq_country,
+      location_count
+    `)
     .eq("id", companyId)
     .single();
 
@@ -176,6 +268,31 @@ export async function updateResearchJob(
 }
 
 export async function createWaitingResearchJobsForImportRun(importRunId: number): Promise<CreateResearchJobsResult> {
+  const companiesById = new Map<number, { id: number; name: string }>();
+
+  const { data: linkedRows, error: linkedError } = await supabase
+    .from("import_run_companies")
+    .select(
+      `
+        company_id,
+        companies:company_id (
+          id,
+          name
+        )
+      `,
+    )
+    .eq("import_run_id", importRunId);
+
+  if (!linkedError) {
+    for (const row of (((linkedRows as unknown) as ImportRunCompanyRow[]) || [])) {
+      const company = toLinkedCompany(row);
+
+      if (company) {
+        companiesById.set(company.id, company);
+      }
+    }
+  }
+
   const { data: contactRows, error: contactsError } = await supabase
     .from("contacts")
     .select(
@@ -192,8 +309,6 @@ export async function createWaitingResearchJobsForImportRun(importRunId: number)
   if (contactsError) {
     throw new Error(`Failed to load imported companies: ${contactsError.message}`);
   }
-
-  const companiesById = new Map<number, { id: number; name: string }>();
 
   for (const row of (((contactRows as unknown) as ResearchCompanyRow[]) || [])) {
     const company = toCompany(row);

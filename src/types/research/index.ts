@@ -9,6 +9,16 @@ export type ResearchCompany = {
   state: string | null;
   employeeCount: number | null;
   isTargetAccount: boolean | null;
+  website?: string | null;
+  primaryIndustry?: string | null;
+  subIndustry?: string | null;
+  annualRevenue?: number | null;
+  ownershipType?: string | null;
+  ticker?: string | null;
+  hqCity?: string | null;
+  hqState?: string | null;
+  hqCountry?: string | null;
+  locationCount?: number | null;
 };
 
 export type EvidenceCandidate = {

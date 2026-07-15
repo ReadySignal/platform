@@ -24,6 +24,22 @@ function formatDate(value: string | null) {
   });
 }
 
+function formatMoney(value: number | null) {
+  if (value === null) {
+    return "Unknown";
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatInteger(value: number | null) {
+  return value === null ? "Unknown" : value.toLocaleString();
+}
+
 function getParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -126,6 +142,68 @@ export default function CompanyDetailPage() {
                     <p className="text-lg font-semibold text-slate-950">{outcomeCount}</p>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Outcomes</p>
                   </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.35)]">
+              <div className="flex flex-col gap-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                  Company Intelligence
+                </p>
+                <p className="text-sm text-slate-500">Imported company facts available for research and prioritization.</p>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  ["Industry", companyIntelligence.company.primary_industry || companyIntelligence.company.industry],
+                  ["Sub-industry", companyIntelligence.company.sub_industry || "Unknown"],
+                  ["Employees", companyIntelligence.company.employee_count.toLocaleString()],
+                  ["Revenue", formatMoney(companyIntelligence.company.annual_revenue)],
+                  [
+                    "HQ",
+                    [companyIntelligence.company.hq_city, companyIntelligence.company.hq_state, companyIntelligence.company.hq_country]
+                      .filter(Boolean)
+                      .join(", ") || "Unknown",
+                  ],
+                  ["Ownership", companyIntelligence.company.ownership_type || "Unknown"],
+                  ["Ticker", companyIntelligence.company.ticker || "Unknown"],
+                  ["Locations", formatInteger(companyIntelligence.company.location_count)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+                  </div>
+                ))}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Website</p>
+                  {companyIntelligence.company.website ? (
+                    <a
+                      href={companyIntelligence.company.website}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 block truncate text-sm font-semibold text-slate-700 transition hover:text-slate-950"
+                    >
+                      {companyIntelligence.company.website}
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-sm font-semibold text-slate-900">Unknown</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">LinkedIn</p>
+                  {companyIntelligence.company.linkedin_url ? (
+                    <a
+                      href={companyIntelligence.company.linkedin_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 block truncate text-sm font-semibold text-slate-700 transition hover:text-slate-950"
+                    >
+                      {companyIntelligence.company.linkedin_url}
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-sm font-semibold text-slate-900">Unknown</p>
+                  )}
                 </div>
               </div>
             </section>

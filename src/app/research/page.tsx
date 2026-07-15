@@ -60,8 +60,10 @@ export default function ResearchQueuePage() {
   const [providerRunsByJobId, setProviderRunsByJobId] = useState<Record<number, ResearchProviderRun[]>>({});
   const [expandedJobIds, setExpandedJobIds] = useState<number[]>([]);
   const [runningJobId, setRunningJobId] = useState<number | null>(null);
+  const [runningLiveJobId, setRunningLiveJobId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveResearchMessage, setLiveResearchMessage] = useState<string | null>(null);
   const summary = summarizeResearchJobs(jobs);
   const progress = summary.total > 0 ? Math.round(((summary.complete + summary.failed) / summary.total) * 100) : 0;
 
@@ -105,6 +107,7 @@ export default function ResearchQueuePage() {
   async function runMockResearch(job: ResearchJob) {
     setRunningJobId(job.id);
     setError(null);
+    setLiveResearchMessage(null);
 
     try {
       const company = await getResearchCompany(job.companyId);
@@ -115,6 +118,52 @@ export default function ResearchQueuePage() {
       setError(runError instanceof Error ? runError.message : "Failed to run mock research.");
     } finally {
       setRunningJobId(null);
+    }
+  }
+
+  async function runLiveResearch(job: ResearchJob) {
+    const confirmed = window.confirm(
+      "Run live OpenAI web research for this company? This may incur OpenAI API usage costs.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRunningLiveJobId(job.id);
+    setError(null);
+    setLiveResearchMessage(null);
+
+    try {
+      const response = await fetch("/api/research/run-live", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        result?: { providerStatus: string; evidenceCount: number };
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Live research failed.");
+      }
+
+      await loadResearchQueue();
+      setExpandedJobIds((current) => (current.includes(job.id) ? current : [...current, job.id]));
+      setLiveResearchMessage(
+        `Live research finished: ${payload.result?.providerStatus || "Complete"} with ${
+          payload.result?.evidenceCount ?? 0
+        } evidence records stored.`,
+      );
+    } catch (runError) {
+      await loadResearchQueue();
+      setExpandedJobIds((current) => (current.includes(job.id) ? current : [...current, job.id]));
+      setError(runError instanceof Error ? runError.message : "Failed to run live research.");
+    } finally {
+      setRunningLiveJobId(null);
     }
   }
 
@@ -181,6 +230,11 @@ export default function ResearchQueuePage() {
           {error ? (
             <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
           ) : null}
+          {liveResearchMessage ? (
+            <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              {liveResearchMessage}
+            </p>
+          ) : null}
         </section>
 
         <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)]">
@@ -239,10 +293,18 @@ export default function ResearchQueuePage() {
                               <button
                                 type="button"
                                 onClick={() => runMockResearch(job)}
-                                disabled={runningJobId === job.id}
+                                disabled={runningJobId === job.id || runningLiveJobId === job.id || job.status === "Researching"}
                                 className="inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                               >
                                 {runningJobId === job.id ? "Running..." : "Run Mock Research"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => runLiveResearch(job)}
+                                disabled={runningLiveJobId === job.id || runningJobId === job.id || job.status === "Researching"}
+                                className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                              >
+                                {runningLiveJobId === job.id ? "Running live..." : "Run Live Research"}
                               </button>
                             </div>
                           </td>

@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import type { NewImportRun, ImportRun } from "../types/ImportRun";
+import type { ImportRunCompany } from "../types/ImportRunCompany";
 
 export type ImportCompanyInsert = {
   name: string;
@@ -7,6 +8,44 @@ export type ImportCompanyInsert = {
   state: string;
   employee_count: number;
   is_target_account: boolean;
+  website?: string | null;
+  linkedin_url?: string | null;
+  primary_industry?: string | null;
+  sub_industry?: string | null;
+  annual_revenue?: number | null;
+  ownership_type?: string | null;
+  ticker?: string | null;
+  hq_city?: string | null;
+  hq_state?: string | null;
+  hq_country?: string | null;
+  location_count?: number | null;
+  naics_code?: string | null;
+  sic_code?: string | null;
+};
+
+export type ImportCompanyUpdate = {
+  industry?: string | null;
+  state?: string | null;
+  employee_count?: number | null;
+  website?: string | null;
+  linkedin_url?: string | null;
+  primary_industry?: string | null;
+  sub_industry?: string | null;
+  annual_revenue?: number | null;
+  ownership_type?: string | null;
+  ticker?: string | null;
+  hq_city?: string | null;
+  hq_state?: string | null;
+  hq_country?: string | null;
+  location_count?: number | null;
+  naics_code?: string | null;
+  sic_code?: string | null;
+};
+
+export type ImportCompanyUpdateResult = {
+  companyId: string;
+  companyName: string;
+  updatedFields: string[];
 };
 
 export type ImportContactInsert = {
@@ -28,6 +67,22 @@ export type ImportContactInsert = {
 export type ImportReferenceCompany = {
   id: string;
   name: string;
+  industry: string | null;
+  state: string | null;
+  employee_count: number | null;
+  website: string | null;
+  linkedin_url: string | null;
+  primary_industry: string | null;
+  sub_industry: string | null;
+  annual_revenue: number | null;
+  ownership_type: string | null;
+  ticker: string | null;
+  hq_city: string | null;
+  hq_state: string | null;
+  hq_country: string | null;
+  location_count: number | null;
+  naics_code: string | null;
+  sic_code: string | null;
 };
 
 export type ImportReferenceContact = {
@@ -68,7 +123,26 @@ function toImportRun(row: ImportRunRow): ImportRun {
 
 export async function getImportReferenceData() {
   const [companiesResult, contactsResult] = await Promise.all([
-    supabase.from("companies").select("id, name"),
+    supabase.from("companies").select(`
+      id,
+      name,
+      industry,
+      state,
+      employee_count,
+      website,
+      linkedin_url,
+      primary_industry,
+      sub_industry,
+      annual_revenue,
+      ownership_type,
+      ticker,
+      hq_city,
+      hq_state,
+      hq_country,
+      location_count,
+      naics_code,
+      sic_code
+    `),
     supabase.from("contacts").select("id, first_name, last_name, email, companies:company_id ( name )"),
   ]);
 
@@ -97,13 +171,92 @@ export async function createImportCompanies(companies: ImportCompanyInsert[]) {
   const { data, error } = await supabase
     .from("companies")
     .insert(companies)
-    .select("id, name");
+    .select(`
+      id,
+      name,
+      industry,
+      state,
+      employee_count,
+      website,
+      linkedin_url,
+      primary_industry,
+      sub_industry,
+      annual_revenue,
+      ownership_type,
+      ticker,
+      hq_city,
+      hq_state,
+      hq_country,
+      location_count,
+      naics_code,
+      sic_code
+    `);
 
   if (error) {
     throw new Error(`Failed to import companies: ${error.message}`);
   }
 
   return (data as ImportReferenceCompany[]) || [];
+}
+
+export async function updateImportCompanyIntelligence(
+  company: ImportReferenceCompany,
+  importedValues: ImportCompanyUpdate,
+): Promise<ImportCompanyUpdateResult | null> {
+  const update: Partial<ImportCompanyUpdate> = {};
+  const updatedFields: string[] = [];
+  const comparableFields: Array<keyof ImportCompanyUpdate> = [
+    "industry",
+    "state",
+    "employee_count",
+    "website",
+    "linkedin_url",
+    "primary_industry",
+    "sub_industry",
+    "annual_revenue",
+    "ownership_type",
+    "ticker",
+    "hq_city",
+    "hq_state",
+    "hq_country",
+    "location_count",
+    "naics_code",
+    "sic_code",
+  ];
+
+  for (const field of comparableFields) {
+    const importedValue = importedValues[field];
+    if (importedValue === null || importedValue === undefined || importedValue === "") {
+      continue;
+    }
+
+    const currentValue = company[field];
+    if (String(currentValue ?? "") === String(importedValue)) {
+      continue;
+    }
+
+    update[field] = importedValue as never;
+    updatedFields.push(field);
+  }
+
+  if (updatedFields.length === 0) {
+    return null;
+  }
+
+  const { error } = await supabase
+    .from("companies")
+    .update(update)
+    .eq("id", company.id);
+
+  if (error) {
+    throw new Error(`Failed to update company intelligence: ${error.message}`);
+  }
+
+  return {
+    companyId: company.id,
+    companyName: company.name,
+    updatedFields,
+  };
 }
 
 export async function createImportContacts(contacts: ImportContactInsert[]) {
@@ -142,4 +295,37 @@ export async function createImportRun(run: NewImportRun): Promise<ImportRun> {
   }
 
   return toImportRun(data as ImportRunRow);
+}
+
+export async function linkImportRunCompanies(
+  importRunId: number,
+  companyIds: Array<string | number>,
+): Promise<ImportRunCompany[]> {
+  const uniqueCompanyIds = Array.from(new Set(companyIds.map((companyId) => Number(companyId)))).filter(Number.isFinite);
+
+  if (uniqueCompanyIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("import_run_companies")
+    .insert(
+      uniqueCompanyIds.map((companyId) => ({
+        import_run_id: importRunId,
+        company_id: companyId,
+      })),
+    )
+    .select("import_run_id, company_id, created_at");
+
+  if (error) {
+    throw new Error(`Failed to link companies to import run: ${error.message}`);
+  }
+
+  return ((data as Array<{ import_run_id: number; company_id: number; created_at: string }> | null) || []).map(
+    (row) => ({
+      importRunId: row.import_run_id,
+      companyId: row.company_id,
+      createdAt: row.created_at,
+    }),
+  );
 }
