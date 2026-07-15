@@ -8,6 +8,7 @@ const navItems = [
   { href: "/import", label: "Import Contacts" },
   { href: "/research", label: "Research Queue" },
   { href: "/companies", label: "Companies" },
+  { href: "/setup", label: "Profile" },
 ];
 
 function isActive(pathname: string, href: string) {

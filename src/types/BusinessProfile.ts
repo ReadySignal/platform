@@ -1,0 +1,54 @@
+export type TerritoryRules = {
+  namedStatesOrRegions: string[];
+  namedAccountsToInclude: string[];
+  namedAccountsToExclude: string[];
+  employeeLimitNotes: string;
+  revenueLimitNotes: string;
+};
+
+export type BusinessProfile = {
+  id: number;
+  profileName: string;
+  companyName: string;
+  productName: string;
+  productDescription: string;
+  valuePropositions: string[];
+  customerProblems: string[];
+  targetIndustries: string[];
+  targetSubIndustries: string[];
+  employeeMin: number | null;
+  employeeMax: number | null;
+  revenueMin: number | null;
+  revenueMax: number | null;
+  targetGeographies: string[];
+  ownershipPreferences: string[];
+  excludedIndustries: string[];
+  excludedCompanyTypes: string[];
+  priorityTitles: string[];
+  secondaryTitles: string[];
+  relevantDepartments: string[];
+  managementLevels: string[];
+  excludedTitles: string[];
+  highPrioritySignals: string[];
+  mediumPrioritySignals: string[];
+  lowPrioritySignals: string[];
+  ignoredSignals: string[];
+  signalRecencyDays: number | null;
+  callObjective: string | null;
+  meetingOutcome: string | null;
+  commonObjections: string[];
+  approvedThemes: string[];
+  territoryRules: TerritoryRules;
+  sourceRestrictions: string[];
+  historicalSuccessNotes: string;
+  profileVersion: number;
+  lastUserConfirmedAt: string | null;
+  learningEnabled: boolean;
+  minimumOutcomesBeforeRecommendations: number;
+  learnedRecommendations: Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BusinessProfileInput = Omit<BusinessProfile, "id" | "createdAt" | "updatedAt">;
