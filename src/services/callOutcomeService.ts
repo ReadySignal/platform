@@ -40,6 +40,33 @@ export async function saveCallOutcome(outcome: NewCallOutcome): Promise<CallOutc
   return toCallOutcome(data as CallOutcomeRow);
 }
 
+export async function updateCallOutcome(
+  outcomeId: number,
+  outcome: Pick<NewCallOutcome, "disposition" | "notes">,
+): Promise<CallOutcome> {
+  const { data, error } = await supabase
+    .from("call_outcomes")
+    .update({
+      disposition: outcome.disposition,
+      notes: outcome.notes?.trim() || null,
+    })
+    .eq("id", outcomeId)
+    .select("id, contact_id, signal_id, disposition, notes, created_at")
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      throw new Error(
+        "Failed to update call outcome: no editable outcome row was returned for that id. Confirm the update RLS policy has been applied.",
+      );
+    }
+
+    throw new Error(`Failed to update call outcome: ${error.message}`);
+  }
+
+  return toCallOutcome(data as CallOutcomeRow);
+}
+
 export async function getCallOutcomesForContact(contactId: number): Promise<CallOutcome[]> {
   const { data, error } = await supabase
     .from("call_outcomes")

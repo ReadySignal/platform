@@ -1,12 +1,12 @@
 type MissionBarProps = {
-  signalsRemaining: number;
+  opportunitiesRemaining: number;
   callsCompleted: number;
   conversations: number;
   meetings: number;
 };
 
 export function MissionBar({
-  signalsRemaining,
+  opportunitiesRemaining,
   callsCompleted,
   conversations,
   meetings,
@@ -25,7 +25,7 @@ export function MissionBar({
 
         <div className="flex flex-wrap gap-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-            Signals Remaining: {signalsRemaining}
+            Opportunities Remaining: {opportunitiesRemaining}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
             Calls Completed: {callsCompleted}

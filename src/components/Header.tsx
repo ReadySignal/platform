@@ -1,6 +1,18 @@
 import { MorningPulse } from "./MorningPulse";
 
-export function Header() {
+type HeaderProps = {
+  opportunitiesRemaining?: number;
+  callsCompleted?: number;
+  conversations?: number;
+  meetings?: number;
+};
+
+export function Header({
+  opportunitiesRemaining = 0,
+  callsCompleted = 0,
+  conversations = 0,
+  meetings = 0,
+}: HeaderProps) {
   return (
     <header className="rounded-[28px] border border-slate-200/80 bg-white/80 px-6 py-8 shadow-[0_20px_80px_-35px_rgba(15,23,42,0.35)] backdrop-blur sm:px-8 lg:px-10 lg:py-10">
       <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
@@ -18,11 +30,16 @@ export function Header() {
           </p>
 
           <p className="mt-1 text-lg font-medium text-slate-700">
-            I found 25 conversations worth having today.
+            I found {opportunitiesRemaining} opportunities still worth working today.
           </p>
         </div>
 
-        <MorningPulse />
+        <MorningPulse
+          opportunitiesRemaining={opportunitiesRemaining}
+          callsCompleted={callsCompleted}
+          conversations={conversations}
+          meetings={meetings}
+        />
       </div>
     </header>
   );

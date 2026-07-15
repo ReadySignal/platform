@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
-import { getCallOutcomesForContactsBetween, saveCallOutcome } from "../services/callOutcomeService";
+import { getCallOutcomesForContactsBetween, saveCallOutcome, updateCallOutcome } from "../services/callOutcomeService";
 import { getQueue } from "../services/queueService";
 import type { CallOutcome } from "../types/CallOutcome";
 import type { Prospect } from "../types/Prospect";
@@ -74,7 +74,7 @@ function calculateProgress(prospects: Prospect[], outcomesByProspectId: Record<n
 
   return {
     completedIds: Object.keys(outcomesByProspectId).map(Number),
-    signalsRemaining: Math.max(0, prospects.length - completedCount),
+    opportunitiesRemaining: Math.max(0, prospects.length - completedCount),
     callsCompleted: completedCount,
     conversations: latestOutcomes.filter(
       (outcome) => outcome.disposition === "Conversation" || outcome.disposition === "Meeting Booked",
@@ -95,11 +95,11 @@ export default function Home() {
   const [notes, setNotes] = useState("");
   const [savingOutcomeId, setSavingOutcomeId] = useState<number | null>(null);
   const [outcomeError, setOutcomeError] = useState<string | null>(null);
-  const [signalsRemaining, setSignalsRemaining] = useState(0);
+  const [outcomeMode, setOutcomeMode] = useState<"create" | "edit">("create");
+  const [opportunitiesRemaining, setOpportunitiesRemaining] = useState(0);
   const [callsCompleted, setCallsCompleted] = useState(0);
   const [conversations, setConversations] = useState(0);
   const [meetings, setMeetings] = useState(0);
-  const [isTopRankWhyOpen, setIsTopRankWhyOpen] = useState(false);
 
   useEffect(() => {
     async function loadQueue() {
@@ -109,7 +109,7 @@ export default function Home() {
       try {
         const data = await getQueue();
         setProspects(data);
-        setSignalsRemaining(data.length);
+        setOpportunitiesRemaining(data.length);
 
         try {
           const { startIso, endIso } = getLocalTodayRange();
@@ -122,7 +122,7 @@ export default function Home() {
 
           setSavedOutcomesByProspectId(outcomesByProspectId);
           setCompletedIds(restoredProgress.completedIds);
-          setSignalsRemaining(restoredProgress.signalsRemaining);
+          setOpportunitiesRemaining(restoredProgress.opportunitiesRemaining);
           setCallsCompleted(restoredProgress.callsCompleted);
           setConversations(restoredProgress.conversations);
           setMeetings(restoredProgress.meetings);
@@ -154,6 +154,23 @@ export default function Home() {
     setSelectedDisposition(null);
     setNotes("");
     setOutcomeError(null);
+    setOutcomeMode("create");
+  };
+
+  const editOutcome = (prospectId: number) => {
+    const savedOutcome = savedOutcomesByProspectId[prospectId];
+
+    if (!savedOutcome) {
+      setOutcomeError("No saved outcome is available to edit.");
+      return;
+    }
+
+    setExpandedProspectId(prospectId);
+    setActiveDispositionId(prospectId);
+    setSelectedDisposition(savedOutcome.disposition);
+    setNotes(savedOutcome.notes ?? "");
+    setOutcomeError(null);
+    setOutcomeMode("edit");
   };
 
   const cancelDisposition = () => {
@@ -161,6 +178,7 @@ export default function Home() {
     setSelectedDisposition(null);
     setNotes("");
     setOutcomeError(null);
+    setOutcomeMode("create");
   };
 
   const saveOutcome = async (prospectId: number) => {
@@ -184,12 +202,19 @@ export default function Home() {
     setOutcomeError(null);
 
     try {
-      const savedOutcome = await saveCallOutcome({
-        contactId: prospect.contactId,
-        signalId: prospect.signalDatabaseId ?? null,
-        disposition: selectedDisposition,
-        notes,
-      });
+      const existingOutcome = savedOutcomesByProspectId[prospectId];
+      const savedOutcome =
+        outcomeMode === "edit" && existingOutcome
+          ? await updateCallOutcome(existingOutcome.id, {
+              disposition: selectedDisposition,
+              notes,
+            })
+          : await saveCallOutcome({
+              contactId: prospect.contactId,
+              signalId: prospect.signalDatabaseId ?? null,
+              disposition: selectedDisposition,
+              notes,
+            });
       const nextOutcomesByProspectId = {
         ...savedOutcomesByProspectId,
         [prospectId]: savedOutcome,
@@ -199,7 +224,7 @@ export default function Home() {
 
       setSavedOutcomesByProspectId(nextOutcomesByProspectId);
       setCompletedIds(nextProgress.completedIds);
-      setSignalsRemaining(nextProgress.signalsRemaining);
+      setOpportunitiesRemaining(nextProgress.opportunitiesRemaining);
       setCallsCompleted(nextProgress.callsCompleted);
       setConversations(nextProgress.conversations);
       setMeetings(nextProgress.meetings);
@@ -207,6 +232,7 @@ export default function Home() {
       setActiveDispositionId(null);
       setSelectedDisposition(null);
       setNotes("");
+      setOutcomeMode("create");
     } catch (error) {
       console.error("Failed to save outcome:", error);
       setOutcomeError(error instanceof Error ? error.message : "Failed to save call outcome. Try again.");
@@ -220,44 +246,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <Header />
-        <MissionBar
-          signalsRemaining={signalsRemaining}
+        <Header
+          opportunitiesRemaining={opportunitiesRemaining}
           callsCompleted={callsCompleted}
           conversations={conversations}
           meetings={meetings}
         />
-        {!queueLoading && !queueError && prospects.length > 0 ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-4 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
-            <button
-              type="button"
-              onClick={() => setIsTopRankWhyOpen((current) => !current)}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800"
-            >
-              Why was this ranked #1?
-              <span className="text-slate-400">{isTopRankWhyOpen ? "v" : ">"}</span>
-            </button>
-
-            {isTopRankWhyOpen ? (
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-sm font-semibold text-slate-900">
-                  Opportunity Score: {prospects[0].opportunityScore ?? 0}
-                </p>
-                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                  Breakdown
-                </p>
-                <div className="mt-2 space-y-1.5 text-sm text-slate-700">
-                  {(prospects[0].opportunityBreakdown || []).map((item) => (
-                    <div key={item.label} className="flex items-center justify-between gap-3">
-                      <span>{item.label}</span>
-                      <span className="font-semibold text-slate-800">+{item.points}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <MissionBar
+          opportunitiesRemaining={opportunitiesRemaining}
+          callsCompleted={callsCompleted}
+          conversations={conversations}
+          meetings={meetings}
+        />
         {queueLoading ? (
           <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-5 text-sm text-slate-600 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
             Loading live queue...
@@ -267,9 +267,30 @@ export default function Home() {
             Failed to load live queue: {queueError}
           </div>
         ) : isQueueComplete ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-sm font-semibold text-emerald-800 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
-            Today&apos;s queue is complete.
-          </div>
+          <>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-sm font-semibold text-emerald-800 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
+              Today&apos;s queue is complete.
+            </div>
+            <Queue
+              prospects={prospects}
+              completedIds={completedIds}
+              expandedProspectId={expandedProspectId}
+              activeDispositionId={activeDispositionId}
+              selectedDisposition={selectedDisposition}
+              notes={notes}
+              savedOutcomesByProspectId={savedOutcomesByProspectId}
+              savingOutcomeId={savingOutcomeId}
+              outcomeError={outcomeError}
+              onToggleExpanded={toggleExpanded}
+              onStartConversation={startConversation}
+              onEditOutcome={editOutcome}
+              onLogAnotherAttempt={startConversation}
+              onDispositionChange={setSelectedDisposition}
+              onNotesChange={setNotes}
+              onSaveOutcome={saveOutcome}
+              onCancelDisposition={cancelDisposition}
+            />
+          </>
         ) : (
           <Queue
             prospects={prospects}
@@ -283,6 +304,7 @@ export default function Home() {
             outcomeError={outcomeError}
             onToggleExpanded={toggleExpanded}
             onStartConversation={startConversation}
+            onEditOutcome={editOutcome}
             onLogAnotherAttempt={startConversation}
             onDispositionChange={setSelectedDisposition}
             onNotesChange={setNotes}
