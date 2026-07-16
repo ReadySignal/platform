@@ -6,9 +6,10 @@ import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
 import { Queue } from "../components/Queue";
 import { TopNavigation } from "../components/TopNavigation";
-import { getCallOutcomesForContactsBetween, saveCallOutcome, updateCallOutcome } from "../services/callOutcomeService";
-import { getQueue } from "../services/queueService";
+import { saveCallOutcome, updateCallOutcome } from "../services/callOutcomeService";
+import { calculateMissionProgress, getTodaysMission } from "../services/missionEngine";
 import type { CallOutcome } from "../types/CallOutcome";
+import type { Mission } from "../types/Mission";
 import type { Prospect } from "../types/Prospect";
 
 function findNextIncompleteProspectId(
@@ -34,58 +35,8 @@ function findNextIncompleteProspectId(
   return null;
 }
 
-function getLocalTodayRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-  return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-  };
-}
-
-function getLatestOutcomesByProspectId(prospects: Prospect[], outcomes: CallOutcome[]) {
-  const prospectIdByContactId = new Map<number, number>();
-
-  for (const prospect of prospects) {
-    if (typeof prospect.contactId === "number") {
-      prospectIdByContactId.set(prospect.contactId, prospect.id);
-    }
-  }
-
-  return outcomes.reduce<Record<number, CallOutcome>>((acc, outcome) => {
-    const prospectId = prospectIdByContactId.get(outcome.contactId);
-
-    if (typeof prospectId !== "number") {
-      return acc;
-    }
-
-    const current = acc[prospectId];
-    if (!current || new Date(outcome.createdAt).getTime() > new Date(current.createdAt).getTime()) {
-      acc[prospectId] = outcome;
-    }
-
-    return acc;
-  }, {});
-}
-
-function calculateProgress(prospects: Prospect[], outcomesByProspectId: Record<number, CallOutcome>) {
-  const latestOutcomes = Object.values(outcomesByProspectId);
-  const completedCount = latestOutcomes.length;
-
-  return {
-    completedIds: Object.keys(outcomesByProspectId).map(Number),
-    opportunitiesRemaining: Math.max(0, prospects.length - completedCount),
-    callsCompleted: completedCount,
-    conversations: latestOutcomes.filter(
-      (outcome) => outcome.disposition === "Conversation" || outcome.disposition === "Meeting Booked",
-    ).length,
-    meetings: latestOutcomes.filter((outcome) => outcome.disposition === "Meeting Booked").length,
-  };
-}
-
 export default function Home() {
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueRefreshing, setQueueRefreshing] = useState(false);
@@ -140,36 +91,24 @@ export default function Home() {
 
         const includeDemo =
           typeof window !== "undefined" && new URLSearchParams(window.location.search).get("showDemo") === "1";
-        const data = await getQueue({ includeDemo });
+        const todaysMission = await getTodaysMission({ includeDemo });
+        const data = todaysMission.missions.map((mission) => mission.prospect);
+
+        setMissions(todaysMission.missions);
         setProspects(data);
-        setOpportunitiesRemaining(data.length);
+        setSavedOutcomesByProspectId(todaysMission.outcomesByProspectId);
+        setCompletedIds(todaysMission.progress.completedIds);
+        setOpportunitiesRemaining(todaysMission.progress.opportunitiesRemaining);
+        setCallsCompleted(todaysMission.progress.callsCompleted);
+        setConversations(todaysMission.progress.conversations);
+        setMeetings(todaysMission.progress.meetings);
+        setExpandedProspectId((current) => {
+          if (current && todaysMission.missions.some((mission) => mission.id === current)) {
+            return current;
+          }
 
-        try {
-          const { startIso, endIso } = getLocalTodayRange();
-          const contactIds = data
-            .map((prospect) => prospect.contactId)
-            .filter((contactId): contactId is number => typeof contactId === "number");
-          const todayOutcomes = await getCallOutcomesForContactsBetween(contactIds, startIso, endIso);
-          const outcomesByProspectId = getLatestOutcomesByProspectId(data, todayOutcomes);
-          const restoredProgress = calculateProgress(data, outcomesByProspectId);
-
-          setSavedOutcomesByProspectId(outcomesByProspectId);
-          setCompletedIds(restoredProgress.completedIds);
-          setOpportunitiesRemaining(restoredProgress.opportunitiesRemaining);
-          setCallsCompleted(restoredProgress.callsCompleted);
-          setConversations(restoredProgress.conversations);
-          setMeetings(restoredProgress.meetings);
-          setExpandedProspectId((current) => {
-            if (current && data.some((prospect) => prospect.id === current)) {
-              return current;
-            }
-
-            return data.find((prospect) => !restoredProgress.completedIds.includes(prospect.id))?.id ?? null;
-          });
-        } catch (error) {
-          console.warn("Today call outcomes are not available yet:", error);
-          setExpandedProspectId(data[0]?.id ?? null);
-        }
+          return todaysMission.nextMissionId;
+        });
 
         if (options.showSuccess) {
           setRefreshMessage(
@@ -282,7 +221,7 @@ export default function Home() {
         ...savedOutcomesByProspectId,
         [prospectId]: savedOutcome,
       };
-      const nextProgress = calculateProgress(prospects, nextOutcomesByProspectId);
+      const nextProgress = calculateMissionProgress(missions, nextOutcomesByProspectId);
       const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextProgress.completedIds, prospects);
 
       setSavedOutcomesByProspectId(nextOutcomesByProspectId);
