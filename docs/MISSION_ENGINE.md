@@ -32,9 +32,22 @@ The Mission Engine may consume:
 - Active Opportunity Signals
 - Previous Outreach
 - Today's Outcomes
+- Mission Outcomes
 - Existing Company and Contact Data
+- Contact Discovery role-validation results
 
 In the current implementation, the engine consumes the ranked queue, active signals, and today's call outcomes. Future iterations should move more profile, evidence, and contact-intelligence orchestration behind this service.
+
+Contact discovery introduces an eligibility progression:
+
+Identified
+-> Role Validated
+-> Contact Method Verified
+-> Mission Eligible
+
+Stage 1 contact discovery produces Identified candidates. Stage 2 responsibility validation produces Role Validated candidates. The Mission Engine must distinguish these states. A contact is not Mission eligible solely because their name and title were discovered or because a user approved the candidate.
+
+Mission Outcomes introduce the first feedback loop. Follow-ups due today rank above new opportunities, Meeting Booked removes a mission from active recommendations, and Already Customer or Disqualified outcomes stop future recommendations unless manually reactivated later.
 
 ## Outputs
 
@@ -60,6 +73,7 @@ The Mission Engine is responsible for:
 
 - Producing Today's Mission
 - Restoring today's completed status from saved outcomes
+- Prioritizing follow-ups due today
 - Calculating daily mission counters
 - Explaining why a recommendation ranked where it did
 - Coordinating existing intelligence services into one recommendation path

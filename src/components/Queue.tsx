@@ -1,29 +1,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { CallOutcome } from "../types/CallOutcome";
+import type { MissionOutcome } from "../types/MissionOutcome";
 import type { Prospect } from "../types/Prospect";
 import { calculateSignalScore } from "../lib/signalEngine";
 import { getSignalCategory } from "../lib/signalLibrary";
-import { DispositionPanel } from "./DispositionPanel";
 
 type QueueProps = {
   prospects: Prospect[];
   completedIds: number[];
-  expandedProspectId: number | null;
-  activeDispositionId: number | null;
-  selectedDisposition: string | null;
-  notes: string;
   savedOutcomesByProspectId: Record<number, CallOutcome>;
-  savingOutcomeId: number | null;
-  outcomeError: string | null;
-  onToggleExpanded: (prospectId: number) => void;
-  onStartConversation: (prospectId: number) => void;
+  missionOutcomesByProspectId: Record<number, MissionOutcome>;
+  onCompleteConversation: (prospectId: number) => void;
   onEditOutcome: (prospectId: number) => void;
   onLogAnotherAttempt: (prospectId: number) => void;
-  onDispositionChange: (value: string) => void;
-  onNotesChange: (value: string) => void;
-  onSaveOutcome: (prospectId: number) => void;
-  onCancelDisposition: () => void;
 };
 
 function formatDateTime(value: string | null) {
@@ -125,28 +115,10 @@ function CompanyLink({ prospect, className }: { prospect: Prospect; className: s
 
 function PrimaryWorkspace({
   prospect,
-  isDispositionOpen,
-  selectedDisposition,
-  notes,
-  isSavingOutcome,
-  outcomeError,
-  onStartConversation,
-  onDispositionChange,
-  onNotesChange,
-  onSaveOutcome,
-  onCancelDisposition,
+  onCompleteConversation,
 }: {
   prospect: Prospect;
-  isDispositionOpen: boolean;
-  selectedDisposition: string | null;
-  notes: string;
-  isSavingOutcome: boolean;
-  outcomeError: string | null;
-  onStartConversation: () => void;
-  onDispositionChange: (value: string) => void;
-  onNotesChange: (value: string) => void;
-  onSaveOutcome: () => void;
-  onCancelDisposition: () => void;
+  onCompleteConversation: () => void;
 }) {
   const signal = calculateSignalScore(prospect);
   const signalCategory = getSignalCategory(prospect.signalId);
@@ -261,30 +233,15 @@ function PrimaryWorkspace({
         <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white">
           <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">Action</p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-300">Open the disposition workspace when the call is underway.</p>
+            <p className="text-sm text-slate-300">After the call, record the outcome so tomorrow&apos;s Mission can improve.</p>
             <button
               type="button"
-              onClick={onStartConversation}
+              onClick={onCompleteConversation}
               className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
             >
-              Start Conversation
+              Complete Conversation
             </button>
           </div>
-
-          {isDispositionOpen ? (
-            <div className="mt-4 text-slate-950">
-              <DispositionPanel
-                selectedDisposition={selectedDisposition}
-                notes={notes}
-                isSaving={isSavingOutcome}
-                error={outcomeError}
-                onDispositionChange={onDispositionChange}
-                onNotesChange={onNotesChange}
-                onSave={onSaveOutcome}
-                onCancel={onCancelDisposition}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
     </section>
@@ -294,19 +251,11 @@ function PrimaryWorkspace({
 export function Queue({
   prospects,
   completedIds,
-  activeDispositionId,
-  selectedDisposition,
-  notes,
   savedOutcomesByProspectId,
-  savingOutcomeId,
-  outcomeError,
-  onStartConversation,
+  missionOutcomesByProspectId,
+  onCompleteConversation,
   onEditOutcome,
   onLogAnotherAttempt,
-  onDispositionChange,
-  onNotesChange,
-  onSaveOutcome,
-  onCancelDisposition,
 }: QueueProps) {
   const [reviewProspectId, setReviewProspectId] = useState<number | null>(null);
   const nextProspect = prospects.find((prospect) => !completedIds.includes(prospect.id)) ?? null;
@@ -320,16 +269,7 @@ export function Queue({
       {nextProspect ? (
         <PrimaryWorkspace
           prospect={nextProspect}
-          isDispositionOpen={activeDispositionId === nextProspect.id}
-          selectedDisposition={selectedDisposition}
-          notes={notes}
-          isSavingOutcome={savingOutcomeId === nextProspect.id}
-          outcomeError={activeDispositionId === nextProspect.id ? outcomeError : null}
-          onStartConversation={() => onStartConversation(nextProspect.id)}
-          onDispositionChange={onDispositionChange}
-          onNotesChange={onNotesChange}
-          onSaveOutcome={() => onSaveOutcome(nextProspect.id)}
-          onCancelDisposition={onCancelDisposition}
+          onCompleteConversation={() => onCompleteConversation(nextProspect.id)}
         />
       ) : null}
 
@@ -368,7 +308,7 @@ export function Queue({
           {completedProspects.length > 0 ? (
             completedProspects.map((prospect) => {
               const savedOutcome = savedOutcomesByProspectId[prospect.id];
-              const isDispositionOpen = activeDispositionId === prospect.id;
+              const missionOutcome = missionOutcomesByProspectId[prospect.id];
 
               return (
                 <div key={prospect.id} className="py-3">
@@ -380,7 +320,8 @@ export function Queue({
                     >
                       <p className="truncate text-sm font-semibold text-slate-900">{prospect.name}</p>
                       <p className="mt-1 text-sm text-slate-500">
-                        {savedOutcome?.disposition ?? "Saved outcome"} | {formatDateTime(savedOutcome?.createdAt ?? null)}
+                        {missionOutcome?.outcome ?? savedOutcome?.disposition ?? "Saved outcome"} |{" "}
+                        {formatDateTime(missionOutcome?.occurredAt ?? savedOutcome?.createdAt ?? null)}
                       </p>
                     </button>
                     <button
@@ -392,7 +333,7 @@ export function Queue({
                     </button>
                   </div>
 
-                  {reviewProspectId === prospect.id && savedOutcome ? (
+                  {reviewProspectId === prospect.id && (savedOutcome || missionOutcome) ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
                         <div>
@@ -404,15 +345,19 @@ export function Queue({
                           <dl className="mt-3 grid gap-2 text-sm">
                             <div>
                               <dt className="font-semibold text-slate-500">Disposition</dt>
-                              <dd className="text-slate-900">{savedOutcome.disposition}</dd>
+                              <dd className="text-slate-900">{missionOutcome?.outcome ?? savedOutcome?.disposition}</dd>
                             </div>
                             <div>
-                              <dt className="font-semibold text-slate-500">Note</dt>
-                              <dd className="text-slate-900">{savedOutcome.notes || "No note saved."}</dd>
+                              <dt className="font-semibold text-slate-500">Learning</dt>
+                              <dd className="text-slate-900">
+                                {missionOutcome?.learnedSignal ?? savedOutcome?.notes ?? "No learning saved."}
+                              </dd>
                             </div>
                             <div>
                               <dt className="font-semibold text-slate-500">Completed</dt>
-                              <dd className="text-slate-900">{formatDateTime(savedOutcome.createdAt)}</dd>
+                              <dd className="text-slate-900">
+                                {formatDateTime(missionOutcome?.occurredAt ?? savedOutcome?.createdAt ?? null)}
+                              </dd>
                             </div>
                           </dl>
                         </div>
@@ -433,21 +378,6 @@ export function Queue({
                           </button>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-
-                  {isDispositionOpen ? (
-                    <div className="mt-3">
-                      <DispositionPanel
-                        selectedDisposition={selectedDisposition}
-                        notes={notes}
-                        isSaving={savingOutcomeId === prospect.id}
-                        error={outcomeError}
-                        onDispositionChange={onDispositionChange}
-                        onNotesChange={onNotesChange}
-                        onSave={() => onSaveOutcome(prospect.id)}
-                        onCancel={onCancelDisposition}
-                      />
                     </div>
                   ) : null}
                 </div>

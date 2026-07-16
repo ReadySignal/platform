@@ -1,42 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header";
 import { MissionBar } from "../components/MissionBar";
+import { MissionOutcomeDialog } from "../components/MissionOutcomeDialog";
 import { Queue } from "../components/Queue";
 import { TopNavigation } from "../components/TopNavigation";
-import { saveCallOutcome, updateCallOutcome } from "../services/callOutcomeService";
-import { calculateMissionProgress, getTodaysMission } from "../services/missionEngine";
+import { getTodaysMission } from "../services/missionEngine";
 import type { CallOutcome } from "../types/CallOutcome";
-import type { Mission } from "../types/Mission";
+import type { MissionOutcome, NewMissionOutcome } from "../types/MissionOutcome";
 import type { Prospect } from "../types/Prospect";
 
-function findNextIncompleteProspectId(
-  completedProspectId: number,
-  completedIds: number[],
-  prospects: Prospect[],
-) {
-  const currentIndex = prospects.findIndex((prospect) => prospect.id === completedProspectId);
-
-  if (currentIndex === -1) {
-    return prospects.find((prospect) => !completedIds.includes(prospect.id))?.id ?? null;
-  }
-
-  for (let offset = 1; offset <= prospects.length; offset += 1) {
-    const nextIndex = (currentIndex + offset) % prospects.length;
-    const candidate = prospects[nextIndex];
-
-    if (!completedIds.includes(candidate.id)) {
-      return candidate.id;
-    }
-  }
-
-  return null;
-}
-
 export default function Home() {
-  const [missions, setMissions] = useState<Mission[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueRefreshing, setQueueRefreshing] = useState(false);
@@ -44,19 +20,20 @@ export default function Home() {
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<number[]>([]);
   const [savedOutcomesByProspectId, setSavedOutcomesByProspectId] = useState<Record<number, CallOutcome>>({});
-  const [expandedProspectId, setExpandedProspectId] = useState<number | null>(null);
-  const [activeDispositionId, setActiveDispositionId] = useState<number | null>(null);
-  const [selectedDisposition, setSelectedDisposition] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
-  const [savingOutcomeId, setSavingOutcomeId] = useState<number | null>(null);
-  const [outcomeError, setOutcomeError] = useState<string | null>(null);
-  const [outcomeMode, setOutcomeMode] = useState<"create" | "edit">("create");
+  const [missionOutcomesByProspectId, setMissionOutcomesByProspectId] = useState<Record<number, MissionOutcome>>({});
+  const [missionOutcomeProspectId, setMissionOutcomeProspectId] = useState<number | null>(null);
+  const [editingMissionOutcomeId, setEditingMissionOutcomeId] = useState<number | null>(null);
+  const [savingMissionOutcome, setSavingMissionOutcome] = useState(false);
+  const [missionOutcomeError, setMissionOutcomeError] = useState<string | null>(null);
   const [opportunitiesRemaining, setOpportunitiesRemaining] = useState(0);
   const [callsCompleted, setCallsCompleted] = useState(0);
   const [conversations, setConversations] = useState(0);
   const [meetings, setMeetings] = useState(0);
+  const loadRequestIdRef = useRef(0);
 
   const loadQueue = useCallback(async (options: { initial?: boolean; showSuccess?: boolean; reconcile?: boolean } = {}) => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
     const initial = options.initial ?? false;
     if (initial) {
       setQueueLoading(true);
@@ -94,22 +71,18 @@ export default function Home() {
         const todaysMission = await getTodaysMission({ includeDemo });
         const data = todaysMission.missions.map((mission) => mission.prospect);
 
-        setMissions(todaysMission.missions);
+        if (requestId !== loadRequestIdRef.current) {
+          return;
+        }
+
         setProspects(data);
         setSavedOutcomesByProspectId(todaysMission.outcomesByProspectId);
+        setMissionOutcomesByProspectId(todaysMission.missionOutcomesByProspectId);
         setCompletedIds(todaysMission.progress.completedIds);
         setOpportunitiesRemaining(todaysMission.progress.opportunitiesRemaining);
         setCallsCompleted(todaysMission.progress.callsCompleted);
         setConversations(todaysMission.progress.conversations);
         setMeetings(todaysMission.progress.meetings);
-        setExpandedProspectId((current) => {
-          if (current && todaysMission.missions.some((mission) => mission.id === current)) {
-            return current;
-          }
-
-          return todaysMission.nextMissionId;
-        });
-
         if (options.showSuccess) {
           setRefreshMessage(
             contactsAdded > 0
@@ -118,11 +91,16 @@ export default function Home() {
           );
         }
       } catch (error) {
+        if (requestId !== loadRequestIdRef.current) {
+          return;
+        }
         console.error("Failed to load queue:", error);
         setQueueError(error instanceof Error ? error.message : "Unknown error");
       } finally {
-        setQueueLoading(false);
-        setQueueRefreshing(false);
+        if (requestId === loadRequestIdRef.current) {
+          setQueueLoading(false);
+          setQueueRefreshing(false);
+        }
       }
   }, []);
 
@@ -146,104 +124,58 @@ export default function Home() {
     };
   }, [loadQueue]);
 
-  const toggleExpanded = (prospectId: number) => {
-    setExpandedProspectId((current) => (current === prospectId ? null : prospectId));
-  };
-
-  const startConversation = (prospectId: number) => {
-    setExpandedProspectId(prospectId);
-    setActiveDispositionId(prospectId);
-    setSelectedDisposition(null);
-    setNotes("");
-    setOutcomeError(null);
-    setOutcomeMode("create");
+  const completeConversation = (prospectId: number) => {
+    setMissionOutcomeProspectId(prospectId);
+    setEditingMissionOutcomeId(null);
+    setMissionOutcomeError(null);
   };
 
   const editOutcome = (prospectId: number) => {
-    const savedOutcome = savedOutcomesByProspectId[prospectId];
-
-    if (!savedOutcome) {
-      setOutcomeError("No saved outcome is available to edit.");
+    const missionOutcome = missionOutcomesByProspectId[prospectId];
+    if (missionOutcome) {
+      setMissionOutcomeProspectId(prospectId);
+      setEditingMissionOutcomeId(missionOutcome.id);
+      setMissionOutcomeError(null);
       return;
     }
 
-    setExpandedProspectId(prospectId);
-    setActiveDispositionId(prospectId);
-    setSelectedDisposition(savedOutcome.disposition);
-    setNotes(savedOutcome.notes ?? "");
-    setOutcomeError(null);
-    setOutcomeMode("edit");
+    setMissionOutcomeError("This is a historical call outcome. New activity is recorded with Complete Conversation.");
   };
 
-  const cancelDisposition = () => {
-    setActiveDispositionId(null);
-    setSelectedDisposition(null);
-    setNotes("");
-    setOutcomeError(null);
-    setOutcomeMode("create");
-  };
-
-  const saveOutcome = async (prospectId: number) => {
-    if (!selectedDisposition) {
-      return;
-    }
-
-    const prospect = prospects.find((item) => item.id === prospectId);
-
-    if (!prospect) {
-      setOutcomeError("Could not find the selected prospect. Refresh the queue and try again.");
-      return;
-    }
-
-    if (typeof prospect.contactId !== "number") {
-      setOutcomeError("This prospect is missing a Supabase contact id, so the outcome cannot be saved.");
-      return;
-    }
-
-    setSavingOutcomeId(prospectId);
-    setOutcomeError(null);
+  const saveMissionOutcome = async (outcome: NewMissionOutcome) => {
+    setSavingMissionOutcome(true);
+    setMissionOutcomeError(null);
 
     try {
-      const existingOutcome = savedOutcomesByProspectId[prospectId];
-      const savedOutcome =
-        outcomeMode === "edit" && existingOutcome
-          ? await updateCallOutcome(existingOutcome.id, {
-              disposition: selectedDisposition,
-              notes,
-            })
-          : await saveCallOutcome({
-              contactId: prospect.contactId,
-              signalId: prospect.signalDatabaseId ?? null,
-              disposition: selectedDisposition,
-              notes,
-            });
-      const nextOutcomesByProspectId = {
-        ...savedOutcomesByProspectId,
-        [prospectId]: savedOutcome,
-      };
-      const nextProgress = calculateMissionProgress(missions, nextOutcomesByProspectId);
-      const nextExpandedProspectId = findNextIncompleteProspectId(prospectId, nextProgress.completedIds, prospects);
+      const response = await fetch(
+        editingMissionOutcomeId ? `/api/mission-outcomes/${editingMissionOutcomeId}` : "/api/mission-outcomes",
+        {
+        method: editingMissionOutcomeId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(outcome),
+        },
+      );
+      const payload = (await response.json()) as { error?: string; outcome?: MissionOutcome };
 
-      setSavedOutcomesByProspectId(nextOutcomesByProspectId);
-      setCompletedIds(nextProgress.completedIds);
-      setOpportunitiesRemaining(nextProgress.opportunitiesRemaining);
-      setCallsCompleted(nextProgress.callsCompleted);
-      setConversations(nextProgress.conversations);
-      setMeetings(nextProgress.meetings);
-      setExpandedProspectId(nextExpandedProspectId);
-      setActiveDispositionId(null);
-      setSelectedDisposition(null);
-      setNotes("");
-      setOutcomeMode("create");
+      if (!response.ok || !payload.outcome) {
+        throw new Error(payload.error || "Failed to save mission outcome.");
+      }
+
+      setMissionOutcomeProspectId(null);
+      setEditingMissionOutcomeId(null);
+      await loadQueue();
     } catch (error) {
-      console.error("Failed to save outcome:", error);
-      setOutcomeError(error instanceof Error ? error.message : "Failed to save call outcome. Try again.");
+      setMissionOutcomeError(error instanceof Error ? error.message : "Failed to save mission outcome.");
     } finally {
-      setSavingOutcomeId(null);
+      setSavingMissionOutcome(false);
     }
   };
 
   const isQueueComplete = prospects.length > 0 && completedIds.length === prospects.length;
+  const missionOutcomeProspect = prospects.find((prospect) => prospect.id === missionOutcomeProspectId) ?? null;
+  const editingMissionOutcome = editingMissionOutcomeId
+    ? Object.values(missionOutcomesByProspectId).find((outcome) => outcome.id === editingMissionOutcomeId) ?? null
+    : null;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#fdfefe_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
@@ -296,6 +228,13 @@ export default function Home() {
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-5 text-sm text-rose-700 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
             Failed to load live queue: {queueError}
           </div>
+        ) : prospects.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-5 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
+            <p className="text-sm font-semibold text-slate-900">No ready opportunities yet.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Import contacts, run company research, or refresh after research completes to build Today&apos;s Mission.
+            </p>
+          </div>
         ) : isQueueComplete ? (
           <>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-sm font-semibold text-emerald-800 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.4)]">
@@ -304,44 +243,40 @@ export default function Home() {
             <Queue
               prospects={prospects}
               completedIds={completedIds}
-              expandedProspectId={expandedProspectId}
-              activeDispositionId={activeDispositionId}
-              selectedDisposition={selectedDisposition}
-              notes={notes}
               savedOutcomesByProspectId={savedOutcomesByProspectId}
-              savingOutcomeId={savingOutcomeId}
-              outcomeError={outcomeError}
-              onToggleExpanded={toggleExpanded}
-              onStartConversation={startConversation}
+              missionOutcomesByProspectId={missionOutcomesByProspectId}
+              onCompleteConversation={completeConversation}
               onEditOutcome={editOutcome}
-              onLogAnotherAttempt={startConversation}
-              onDispositionChange={setSelectedDisposition}
-              onNotesChange={setNotes}
-              onSaveOutcome={saveOutcome}
-              onCancelDisposition={cancelDisposition}
+              onLogAnotherAttempt={completeConversation}
             />
           </>
         ) : (
           <Queue
             prospects={prospects}
             completedIds={completedIds}
-            expandedProspectId={expandedProspectId}
-            activeDispositionId={activeDispositionId}
-            selectedDisposition={selectedDisposition}
-            notes={notes}
             savedOutcomesByProspectId={savedOutcomesByProspectId}
-            savingOutcomeId={savingOutcomeId}
-            outcomeError={outcomeError}
-            onToggleExpanded={toggleExpanded}
-            onStartConversation={startConversation}
+            missionOutcomesByProspectId={missionOutcomesByProspectId}
+            onCompleteConversation={completeConversation}
             onEditOutcome={editOutcome}
-            onLogAnotherAttempt={startConversation}
-            onDispositionChange={setSelectedDisposition}
-            onNotesChange={setNotes}
-            onSaveOutcome={saveOutcome}
-            onCancelDisposition={cancelDisposition}
+            onLogAnotherAttempt={completeConversation}
           />
         )}
+        {missionOutcomeProspect ? (
+          <MissionOutcomeDialog
+            prospect={missionOutcomeProspect}
+            isSaving={savingMissionOutcome}
+            error={missionOutcomeError}
+            initialOutcome={editingMissionOutcome}
+            onSave={saveMissionOutcome}
+            onClose={() => {
+              if (!savingMissionOutcome) {
+                setMissionOutcomeProspectId(null);
+                setEditingMissionOutcomeId(null);
+                setMissionOutcomeError(null);
+              }
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

@@ -1,4 +1,5 @@
 import type { CallOutcome } from "./CallOutcome";
+import type { MissionOutcome } from "./MissionOutcome";
 import type { Prospect } from "./Prospect";
 
 export type MissionConfidence = "High Confidence" | "Medium Confidence";
@@ -58,6 +59,7 @@ export type MissionProgress = {
 export type TodaysMission = {
   missions: Mission[];
   outcomesByProspectId: Record<number, CallOutcome>;
+  missionOutcomesByProspectId: Record<number, MissionOutcome>;
   progress: MissionProgress;
   nextMissionId: number | null;
 };
