@@ -119,6 +119,16 @@ const allowedEvidenceTypes = [
   "modernization or reliability initiative",
   "relevant industry news",
 ];
+const DISALLOWED_SOURCE_HOSTS = [
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "x.com",
+  "twitter.com",
+  "zoominfo.com",
+  "rocketreach.co",
+  "signalhire.com",
+];
 
 function formatCompanyFacts(company: ResearchCompany) {
   const hq = [company.hqCity, company.hqState || company.state, company.hqCountry].filter(Boolean).join(", ");
@@ -145,6 +155,7 @@ Known company facts from the user's imported list:
 ${formatCompanyFacts(company)}
 
 Window: last ${researchWindowDays} days. Prefer company newsroom/press releases, company website, reputable industry publications, and reputable news organizations.
+Do not use LinkedIn, social profiles, people-search sites, or data brokers as evidence sources.
 Look only for: ${allowedEvidenceTypes.join(", ")}.
 Only search for NEW developments. Do not repeat known company facts as findings.
 Do not research contacts. Do not infer, invent, or include unsupported claims.
@@ -430,6 +441,18 @@ export function normalizeSourceUrl(value: string | null | undefined) {
   }
 }
 
+export function isAllowedPublicResearchSource(value: string | null | undefined) {
+  const normalized = normalizeSourceUrl(value);
+  if (!normalized) return false;
+
+  try {
+    const host = new URL(normalized).hostname.toLowerCase().replace(/^www\./, "");
+    return !DISALLOWED_SOURCE_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+  } catch {
+    return false;
+  }
+}
+
 function normalizeCompanyReference(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -526,6 +549,7 @@ function normalizeFinding(
     !finding.summary?.trim() ||
     !finding.sourceName?.trim() ||
     !normalizedSourceUrl ||
+    !isAllowedPublicResearchSource(normalizedSourceUrl) ||
     !finding.confidence
   ) {
     return null;

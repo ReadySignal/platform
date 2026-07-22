@@ -5,14 +5,14 @@ export async function POST(request: Request) {
   try {
     assertInternalRequest(request);
 
-    const body = (await request.json()) as { companyName?: string; companyUrl?: string | null };
+    const body = (await request.json()) as { companyName?: string; companyUrl?: string | null; forceRefresh?: boolean };
     const companyName = body.companyName?.trim();
 
     if (!companyName) {
       return Response.json({ error: "companyName is required." }, { status: 400 });
     }
 
-    const result = await researchCompanyByName(companyName, body.companyUrl ?? null);
+    const result = await researchCompanyByName(companyName, body.companyUrl ?? null, body.forceRefresh === true);
 
     return Response.json({ result });
   } catch (error) {

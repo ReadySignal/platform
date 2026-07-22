@@ -12,12 +12,31 @@ import {
 
 type BusinessProfileRow = {
   id: string | number;
+  product_name: string;
+  product_description: string;
+  value_propositions: unknown;
+  customer_problems: unknown;
+  target_industries: unknown;
+  target_geographies: unknown;
   priority_titles: unknown;
   secondary_titles: unknown;
   relevant_departments: unknown;
   management_levels: unknown;
   excluded_titles: unknown;
 };
+
+const DEFAULT_PRIORITY_TITLES = [
+  "maintenance manager",
+  "reliability manager",
+  "engineering manager",
+  "plant manager",
+  "director of maintenance",
+  "director of engineering",
+  "vice president of operations",
+  "vp operations",
+];
+const DEFAULT_SECONDARY_TITLES = ["facilities manager", "continuous improvement manager", "operations manager"];
+const DEFAULT_MANAGEMENT_LEVELS = ["manager", "director", "vice president", "vp", "head"];
 
 type DiscoveryRunRow = {
   id: string | number;
@@ -173,7 +192,9 @@ async function getActiveProfile() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("business_profiles")
-    .select("id, priority_titles, secondary_titles, relevant_departments, management_levels, excluded_titles")
+    .select(
+      "id, product_name, product_description, value_propositions, customer_problems, target_industries, target_geographies, priority_titles, secondary_titles, relevant_departments, management_levels, excluded_titles",
+    )
     .eq("is_active", true)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -182,12 +203,21 @@ async function getActiveProfile() {
   if (error) throw new Error(`Failed to load active business profile: ${error.message}`);
   if (!data) return null;
   const row = data as BusinessProfileRow;
+  const priorityTitles = toStrings(row.priority_titles);
+  const secondaryTitles = toStrings(row.secondary_titles);
+  const managementLevels = toStrings(row.management_levels);
   return {
     id: Number(row.id),
-    priorityTitles: toStrings(row.priority_titles),
-    secondaryTitles: toStrings(row.secondary_titles),
+    productName: row.product_name,
+    productDescription: row.product_description,
+    valuePropositions: toStrings(row.value_propositions),
+    customerProblems: toStrings(row.customer_problems),
+    targetIndustries: toStrings(row.target_industries),
+    targetGeographies: toStrings(row.target_geographies),
+    priorityTitles: priorityTitles.length > 0 ? priorityTitles : DEFAULT_PRIORITY_TITLES,
+    secondaryTitles: secondaryTitles.length > 0 ? secondaryTitles : DEFAULT_SECONDARY_TITLES,
     relevantDepartments: toStrings(row.relevant_departments),
-    managementLevels: toStrings(row.management_levels),
+    managementLevels: managementLevels.length > 0 ? managementLevels : DEFAULT_MANAGEMENT_LEVELS,
     excludedTitles: toStrings(row.excluded_titles),
   };
 }
@@ -332,7 +362,7 @@ async function persistDiscoveryRun(
   return websiteUpdated;
 }
 
-export async function ensureCompanyDiscovery(companyId: number): Promise<CompanyDiscoverySummary> {
+export async function ensureCompanyDiscovery(companyId: number, forceRefresh = false): Promise<CompanyDiscoverySummary> {
   const profile = await getActiveProfile();
   if (!profile) return { websiteUpdated: false, website: null, candidates: [] };
   const supabase = getSupabaseAdmin();
@@ -348,7 +378,7 @@ export async function ensureCompanyDiscovery(companyId: number): Promise<Company
   const latest = ((runs as DiscoveryRunRow[] | null) || [])[0];
   const completedRecently =
     latest?.status === "Complete" && Date.now() - new Date(latest.created_at).getTime() < 7 * 24 * 60 * 60 * 1000;
-  if (completedRecently || latest?.status === "Running") {
+  if ((!forceRefresh && completedRecently) || latest?.status === "Running") {
     return {
       websiteUpdated: false,
       website: await getStoredWebsite(companyId),

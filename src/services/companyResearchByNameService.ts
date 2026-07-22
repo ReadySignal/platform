@@ -3,13 +3,16 @@ import "server-only";
 import { getSupabaseAdmin } from "../lib/supabaseAdmin";
 import { getEvidenceForCompany } from "./evidenceService";
 import { getCompanyIntelligence } from "./companyIntelligenceService";
+import { getActiveBusinessProfile } from "./businessProfileService";
 import { ensureCompanyDiscovery, getDiscoveryCandidates, type SourcedDiscoveryCandidate } from "./companyDiscoveryService";
+import { isAllowedPublicResearchSource } from "./researchProviders/openAIWebResearchProvider";
 import { runLiveResearchJob } from "./liveResearchOrchestrator";
 import { getResearchCompany, getResearchJob } from "./researchService";
 import type { Evidence } from "../types/Evidence";
 import type { RankedCompanyContact } from "../types/CompanyIntelligence";
 
 export type CompanyResearchEvidence = {
+  evidenceType: string;
   headline: string;
   summary: string;
   sourceName: string;
@@ -40,6 +43,7 @@ export type CompanyResearchByNameResult = {
   companyUrlSource: string | null;
   companyUrlConfidence: "High" | "Medium" | "Low" | null;
   evidence: CompanyResearchEvidence[];
+  candidates: CompanyResearchCandidate[];
   bestCandidate: CompanyResearchCandidate | null;
 };
 
@@ -54,6 +58,55 @@ type ResearchJobRow = { id: string | number; status: string };
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ");
+}
+
+const evidenceTypeWeight: Record<string, number> = {
+  "modernization or reliability initiative": 100,
+  "capital investment": 90,
+  "new facility": 85,
+  expansion: 80,
+  "new product line": 75,
+  "major hiring": 55,
+  acquisition: 45,
+  "leadership change": 30,
+  "relevant industry news": 20,
+};
+
+function relevanceTerms(values: string[]) {
+  const ignored = new Set(["about", "across", "after", "also", "from", "into", "more", "over", "that", "their", "this", "with"]);
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => value.toLowerCase().split(/[^a-z0-9]+/))
+        .filter((term) => term.length >= 4 && !ignored.has(term)),
+    ),
+  );
+}
+
+function rankEvidence(
+  evidence: CompanyResearchEvidence[],
+  profile: Awaited<ReturnType<typeof getActiveBusinessProfile>>,
+) {
+  const terms = profile
+    ? relevanceTerms([
+        profile.productName,
+        profile.productDescription,
+        ...profile.valuePropositions,
+        ...profile.customerProblems,
+        ...profile.highPrioritySignals,
+        ...profile.mediumPrioritySignals,
+      ])
+    : [];
+
+  return [...evidence].sort((a, b) => {
+    const score = (item: CompanyResearchEvidence) => {
+      const haystack = `${item.evidenceType} ${item.headline} ${item.summary}`.toLowerCase();
+      const profileMatches = terms.filter((term) => haystack.includes(term)).length;
+      const confidence = item.confidence === "High" ? 10 : item.confidence === "Medium" ? 5 : 0;
+      return (evidenceTypeWeight[item.evidenceType.toLowerCase()] ?? 0) + profileMatches * 4 + confidence;
+    };
+    return score(b) - score(a);
+  });
 }
 
 async function findCompanyByName(companyName: string): Promise<CompanyRow | null> {
@@ -100,7 +153,7 @@ async function createCompanyByName(companyName: string, companyUrl: string | nul
  * Engine's own "don't research the same company repeatedly" rule instead of
  * spending on every request for a company that already has evidence.
  */
-async function ensureLiveResearch(companyId: number, forceAfterWebsiteResolution = false): Promise<void> {
+async function ensureLiveResearch(companyId: number, forceAfterWebsiteResolution = false, forceRefresh = false): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: jobRows, error } = await supabaseAdmin
     .from("research_jobs")
@@ -115,7 +168,7 @@ async function ensureLiveResearch(companyId: number, forceAfterWebsiteResolution
   const jobs = (jobRows as ResearchJobRow[] | null) || [];
   const latest = jobs[0];
 
-  if (latest?.status === "Researching" || (latest?.status === "Complete" && !forceAfterWebsiteResolution)) {
+  if (latest?.status === "Researching" || (latest?.status === "Complete" && !forceAfterWebsiteResolution && !forceRefresh)) {
     return;
   }
 
@@ -207,6 +260,7 @@ function toResearchCandidate(candidate: SourcedDiscoveryCandidate): CompanyResea
 export async function researchCompanyByName(
   companyName: string,
   companyUrl: string | null = null,
+  forceRefresh = false,
 ): Promise<CompanyResearchByNameResult> {
   const normalized = normalizeName(companyName);
 
@@ -217,27 +271,35 @@ export async function researchCompanyByName(
   const company = (await findCompanyByName(normalized)) || (await createCompanyByName(normalized, companyUrl));
   const companyId = Number(company.id);
 
-  const discovery = await ensureCompanyDiscovery(companyId);
-  await ensureLiveResearch(companyId, discovery.websiteUpdated);
+  const discovery = await ensureCompanyDiscovery(companyId, forceRefresh);
+  await ensureLiveResearch(companyId, discovery.websiteUpdated, forceRefresh);
 
-  const [evidenceRows, intelligence] = await Promise.all([
+  const [evidenceRows, intelligence, activeProfile] = await Promise.all([
     getEvidenceForCompany(companyId),
     getCompanyIntelligence(String(companyId)).catch(() => null),
+    getActiveBusinessProfile().catch(() => null),
   ]);
 
-  const evidence: CompanyResearchEvidence[] = evidenceRows.map((item: Evidence) => ({
-    headline: item.headline,
-    summary: item.summary,
-    sourceName: item.sourceName,
-    sourceUrl: item.sourceUrl,
-    confidence: item.confidence,
-    publishedAt: item.publishedAt,
-  }));
+  const evidence = rankEvidence(
+    evidenceRows
+      .filter((item: Evidence) => isAllowedPublicResearchSource(item.sourceUrl))
+      .map((item: Evidence) => ({
+        evidenceType: item.evidenceType,
+        headline: item.headline,
+        summary: item.summary,
+        sourceName: item.sourceName,
+        sourceUrl: item.sourceUrl,
+        confidence: item.confidence,
+        publishedAt: item.publishedAt,
+      })),
+    activeProfile,
+  );
 
   const discoveredCandidates = discovery.candidates.length > 0 ? discovery.candidates : await getDiscoveryCandidates(companyId);
-  const sourcedCandidate = discoveredCandidates[0];
+  const sourcedCandidates = discoveredCandidates.slice(0, 5).map(toResearchCandidate);
   const importedCandidate = intelligence ? findCandidateWithEvidenceSource(intelligence.rankedContacts, evidence) : null;
-  const bestCandidate = sourcedCandidate ? toResearchCandidate(sourcedCandidate) : importedCandidate;
+  const candidates = sourcedCandidates.length > 0 ? sourcedCandidates : importedCandidate ? [importedCandidate] : [];
+  const bestCandidate = candidates[0] ?? null;
 
   const refreshedCompany = await findCompanyByName(normalized);
 
@@ -248,6 +310,7 @@ export async function researchCompanyByName(
     companyUrlSource: refreshedCompany?.website_source_url ?? discovery.website?.sourceUrl ?? null,
     companyUrlConfidence: refreshedCompany?.website_confidence ?? discovery.website?.confidence ?? null,
     evidence,
+    candidates,
     bestCandidate,
   };
 }

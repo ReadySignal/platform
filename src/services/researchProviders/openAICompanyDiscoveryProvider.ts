@@ -41,6 +41,12 @@ export type CompanyDiscoveryResult = {
 };
 
 type BusinessProfileForDiscovery = {
+  productName: string;
+  productDescription: string;
+  valuePropositions: string[];
+  customerProblems: string[];
+  targetIndustries: string[];
+  targetGeographies: string[];
   priorityTitles: string[];
   secondaryTitles: string[];
   relevantDepartments: string[];
@@ -64,9 +70,9 @@ type OpenAIResponseBody = {
   output?: OpenAIResponseItem[];
 };
 
-const MAX_CONTACTS = 3;
-const MAX_TOOL_CALLS = 4;
-const MAX_OUTPUT_TOKENS = 4800;
+const MAX_CONTACTS = 5;
+const MAX_TOOL_CALLS = 6;
+const MAX_OUTPUT_TOKENS = 6400;
 const TIMEOUT_MS = 90000;
 const DISALLOWED_HOSTS = [
   "linkedin.com",
@@ -185,11 +191,19 @@ function extractOutput(response: OpenAIResponseBody): unknown {
 }
 
 function buildPrompt(company: ResearchCompany, profile: BusinessProfileForDiscovery) {
-  return `Find the official website and up to ${MAX_CONTACTS} relevant public contact candidates for the exact target company below.
+  return `Find the official website and a sourced shortlist of up to ${MAX_CONTACTS} relevant public contact candidates for the exact target company below.
 
 Target company: ${company.name}
 Known website: ${company.website || "Unknown"}
 Known location: ${[company.hqCity, company.hqState || company.state, company.hqCountry].filter(Boolean).join(", ") || "Unknown"}
+
+Seller and offering context:
+- Product: ${profile.productName}
+- Description: ${profile.productDescription}
+- Customer problems: ${profile.customerProblems.join(", ") || "Not specified"}
+- Value propositions: ${profile.valuePropositions.join(", ") || "Not specified"}
+- Target industries: ${profile.targetIndustries.join(", ") || "Not specified"}
+- Preferred geographies: ${profile.targetGeographies.join(", ") || "Not specified"}
 
 Target role guidance:
 - Priority titles: ${profile.priorityTitles.join(", ") || "operations, maintenance, reliability, engineering, plant leadership"}
@@ -200,6 +214,8 @@ Target role guidance:
 
 Use only public, citable pages. Prefer the company's own website, company newsroom, conference speaker pages, trade associations, and reputable news sources.
 Do not use LinkedIn, social profiles, people-search sites, data brokers, guessed domains, guessed titles, guessed employment, emails, or phone numbers.
+Search independently for several role-relevant people before stopping. Return fewer than ${MAX_CONTACTS} only when the allowed public sources cannot support more.
+Prefer people whose responsibilities connect directly to the stated product and customer problems, and prefer people in the target geographies when a sourced location is available.
 The official website is valid only when the cited page explicitly identifies ${company.name} and its source host matches the proposed website host.
 Mark employment Current only when the cited page explicitly states the person's name, title, and current association with ${company.name}. Otherwise use Unclear or Former.
 Put concise factual support in identityEvidence and companyAssociationEvidence. List every uncertainty in missingInformation and every contradiction in conflictingSignals.
