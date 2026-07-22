@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "../lib/supabaseAdmin";
 import { getEvidenceForCompany } from "./evidenceService";
 import { getCompanyIntelligence } from "./companyIntelligenceService";
+import { ensureCompanyDiscovery, getDiscoveryCandidates, type SourcedDiscoveryCandidate } from "./companyDiscoveryService";
 import { runLiveResearchJob } from "./liveResearchOrchestrator";
 import { getResearchCompany, getResearchJob } from "./researchService";
 import type { Evidence } from "../types/Evidence";
@@ -25,17 +26,30 @@ export type CompanyResearchCandidate = {
   employmentStatus: "Current" | "Unclear" | "Former";
   validationStatus: "Not Validated" | "Validating" | "Validated" | "Failed";
   roleFitLevel: "Strong" | "Possible" | "Weak" | null;
+  confidence: "High" | "Medium" | "Low";
+  validationConfidence: "High" | "Medium" | "Low" | null;
+  confidenceReasons: string[];
+  conflictingSignals: string[];
+  missingInformation: string[];
 };
 
 export type CompanyResearchByNameResult = {
   companyId: number;
   companyName: string;
   companyUrl: string | null;
+  companyUrlSource: string | null;
+  companyUrlConfidence: "High" | "Medium" | "Low" | null;
   evidence: CompanyResearchEvidence[];
   bestCandidate: CompanyResearchCandidate | null;
 };
 
-type CompanyRow = { id: string | number; name: string; website: string | null };
+type CompanyRow = {
+  id: string | number;
+  name: string;
+  website: string | null;
+  website_source_url: string | null;
+  website_confidence: "High" | "Medium" | "Low" | null;
+};
 type ResearchJobRow = { id: string | number; status: string };
 
 function normalizeName(value: string) {
@@ -46,7 +60,7 @@ async function findCompanyByName(companyName: string): Promise<CompanyRow | null
   const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from("companies")
-    .select("id, name, website")
+    .select("id, name, website, website_source_url, website_confidence")
     .ilike("name", companyName)
     .limit(1)
     .maybeSingle();
@@ -70,7 +84,7 @@ async function createCompanyByName(companyName: string, companyUrl: string | nul
       is_target_account: true,
       website: companyUrl,
     })
-    .select("id, name, website")
+    .select("id, name, website, website_source_url, website_confidence")
     .single();
 
   if (error) {
@@ -86,7 +100,7 @@ async function createCompanyByName(companyName: string, companyUrl: string | nul
  * Engine's own "don't research the same company repeatedly" rule instead of
  * spending on every request for a company that already has evidence.
  */
-async function ensureLiveResearch(companyId: number): Promise<void> {
+async function ensureLiveResearch(companyId: number, forceAfterWebsiteResolution = false): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: jobRows, error } = await supabaseAdmin
     .from("research_jobs")
@@ -101,7 +115,7 @@ async function ensureLiveResearch(companyId: number): Promise<void> {
   const jobs = (jobRows as ResearchJobRow[] | null) || [];
   const latest = jobs[0];
 
-  if (latest && (latest.status === "Complete" || latest.status === "Researching")) {
+  if (latest?.status === "Researching" || (latest?.status === "Complete" && !forceAfterWebsiteResolution)) {
     return;
   }
 
@@ -162,10 +176,32 @@ function findCandidateWithEvidenceSource(
       employmentStatus: "Current",
       validationStatus: contact.verifiedContact ? "Validated" : "Not Validated",
       roleFitLevel: contact.overallScore >= 70 ? "Strong" : contact.overallScore >= 45 ? "Possible" : "Weak",
+      confidence: "Medium",
+      validationConfidence: contact.verifiedContact ? "Medium" : null,
+      confidenceReasons: ["Imported contact is named in a stored public evidence record"],
+      conflictingSignals: [],
+      missingInformation: contact.verifiedContact ? [] : ["Contact identity has not been independently validated"],
     };
   }
 
   return null;
+}
+
+function toResearchCandidate(candidate: SourcedDiscoveryCandidate): CompanyResearchCandidate {
+  return {
+    fullName: candidate.fullName,
+    currentTitle: candidate.currentTitle,
+    sourceName: candidate.sourceName,
+    sourceUrl: candidate.sourceUrl,
+    employmentStatus: candidate.employmentStatus,
+    validationStatus: candidate.validationStatus,
+    roleFitLevel: candidate.roleFitLevel,
+    confidence: candidate.confidence,
+    validationConfidence: candidate.validationConfidence,
+    confidenceReasons: candidate.confidenceReasons,
+    conflictingSignals: candidate.conflictingSignals,
+    missingInformation: candidate.missingInformation,
+  };
 }
 
 export async function researchCompanyByName(
@@ -181,7 +217,8 @@ export async function researchCompanyByName(
   const company = (await findCompanyByName(normalized)) || (await createCompanyByName(normalized, companyUrl));
   const companyId = Number(company.id);
 
-  await ensureLiveResearch(companyId);
+  const discovery = await ensureCompanyDiscovery(companyId);
+  await ensureLiveResearch(companyId, discovery.websiteUpdated);
 
   const [evidenceRows, intelligence] = await Promise.all([
     getEvidenceForCompany(companyId),
@@ -197,12 +234,19 @@ export async function researchCompanyByName(
     publishedAt: item.publishedAt,
   }));
 
-  const bestCandidate = intelligence ? findCandidateWithEvidenceSource(intelligence.rankedContacts, evidence) : null;
+  const discoveredCandidates = discovery.candidates.length > 0 ? discovery.candidates : await getDiscoveryCandidates(companyId);
+  const sourcedCandidate = discoveredCandidates[0];
+  const importedCandidate = intelligence ? findCandidateWithEvidenceSource(intelligence.rankedContacts, evidence) : null;
+  const bestCandidate = sourcedCandidate ? toResearchCandidate(sourcedCandidate) : importedCandidate;
+
+  const refreshedCompany = await findCompanyByName(normalized);
 
   return {
     companyId,
     companyName: company.name,
-    companyUrl: company.website,
+    companyUrl: refreshedCompany?.website ?? company.website,
+    companyUrlSource: refreshedCompany?.website_source_url ?? discovery.website?.sourceUrl ?? null,
+    companyUrlConfidence: refreshedCompany?.website_confidence ?? discovery.website?.confidence ?? null,
     evidence,
     bestCandidate,
   };

@@ -406,7 +406,7 @@ function parseResearchOutput(company: ResearchCompany, responseBody: unknown): O
   return output;
 }
 
-function normalizeSourceUrl(value: string | null | undefined) {
+export function normalizeSourceUrl(value: string | null | undefined) {
   if (!value) {
     return null;
   }
@@ -434,7 +434,7 @@ function normalizeCompanyReference(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function sourceMatchesCompanyWebsite(sourceUrl: string, companyWebsite: string | null | undefined) {
+export function sourceMatchesCompanyWebsite(sourceUrl: string, companyWebsite: string | null | undefined) {
   if (!companyWebsite) {
     return false;
   }
@@ -486,7 +486,7 @@ function collectUrlsFromUnknown(value: unknown, urls: Set<string>) {
   }
 }
 
-function getVerifiedSourceUrls(responseBody: unknown) {
+export function getVerifiedSourceUrls(responseBody: unknown) {
   const response = responseBody as OpenAIResponseBody;
   const urls = new Set<string>();
 
