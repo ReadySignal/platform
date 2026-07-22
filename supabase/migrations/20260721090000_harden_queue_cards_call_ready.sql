@@ -12,6 +12,6 @@ alter table public.queue_cards
     or (
       person_source_url is not null and length(trim(person_source_url)) > 0
       and route_source is not null and length(trim(route_source)) > 0
-      and jsonb_array_length(assumptions) > 0
+      and cardinality(assumptions) > 0
     )
   );
