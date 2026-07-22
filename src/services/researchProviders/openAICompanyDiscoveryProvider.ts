@@ -56,6 +56,9 @@ type OpenAIResponseItem = {
 
 type OpenAIResponseBody = {
   status?: string;
+  incomplete_details?: {
+    reason?: string;
+  };
   output_parsed?: unknown;
   output_text?: string;
   output?: OpenAIResponseItem[];
@@ -63,6 +66,7 @@ type OpenAIResponseBody = {
 
 const MAX_CONTACTS = 3;
 const MAX_TOOL_CALLS = 4;
+const MAX_OUTPUT_TOKENS = 4800;
 const TIMEOUT_MS = 90000;
 const DISALLOWED_HOSTS = [
   "linkedin.com",
@@ -304,7 +308,7 @@ export async function discoverCompanyAndContacts(
         tool_choice: "required",
         include: ["web_search_call.action.sources"],
         text: { format: { type: "json_schema", name: "company_identity_and_contacts", strict: true, schema: outputSchema } },
-        max_output_tokens: 2400,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
         max_tool_calls: MAX_TOOL_CALLS,
         truncation: "disabled",
         input: buildPrompt(company, profile),
@@ -326,7 +330,14 @@ export async function discoverCompanyAndContacts(
 
   const responseBody = (await response.json()) as OpenAIResponseBody;
   if (responseBody.status && responseBody.status !== "completed") {
-    throw new Error("Company and contact discovery response was incomplete. Try again.");
+    const reason = responseBody.incomplete_details?.reason?.trim() || "unknown reason";
+    console.warn("[company-discovery] OpenAI response was incomplete.", {
+      companyId: company.id,
+      reason,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      maxToolCalls: MAX_TOOL_CALLS,
+    });
+    throw new Error(`Company and contact discovery response was incomplete (${reason}). Try again.`);
   }
 
   const parsed = extractOutput(responseBody);
