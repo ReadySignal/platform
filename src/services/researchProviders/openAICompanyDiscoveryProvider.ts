@@ -190,12 +190,13 @@ function extractOutput(response: OpenAIResponseBody): unknown {
   return JSON.parse(text);
 }
 
-function buildPrompt(company: ResearchCompany, profile: BusinessProfileForDiscovery) {
+function buildPrompt(company: ResearchCompany, profile: BusinessProfileForDiscovery, researchContext: string | null) {
   return `Find the official website and a sourced shortlist of up to ${MAX_CONTACTS} relevant public contact candidates for the exact target company below.
 
 Target company: ${company.name}
 Known website: ${company.website || "Unknown"}
 Known location: ${[company.hqCity, company.hqState || company.state, company.hqCountry].filter(Boolean).join(", ") || "Unknown"}
+Existing buying signal to anchor the contact search: ${researchContext || "None supplied"}
 
 Seller and offering context:
 - Product: ${profile.productName}
@@ -215,7 +216,7 @@ Target role guidance:
 Use only public, citable pages. Prefer the company's own website, company newsroom, conference speaker pages, trade associations, and reputable news sources.
 Do not use LinkedIn, social profiles, people-search sites, data brokers, guessed domains, guessed titles, guessed employment, emails, or phone numbers.
 Search independently for several role-relevant people before stopping. Return fewer than ${MAX_CONTACTS} only when the allowed public sources cannot support more.
-Prefer people whose responsibilities connect directly to the stated product and customer problems, and prefer people in the target geographies when a sourced location is available.
+Prefer people whose responsibilities connect directly to the stated product, customer problems, and existing buying signal. Prefer people in the target geographies when a sourced location is available.
 The official website is valid only when the cited page explicitly identifies ${company.name} and its source host matches the proposed website host.
 Mark employment Current only when the cited page explicitly states the person's name, title, and current association with ${company.name}. Otherwise use Unclear or Former.
 Put concise factual support in identityEvidence and companyAssociationEvidence. List every uncertainty in missingInformation and every contradiction in conflictingSignals.
@@ -306,6 +307,7 @@ function validateContact(company: ResearchCompany, value: unknown, verifiedUrls:
 export async function discoverCompanyAndContacts(
   company: ResearchCompany,
   profile: BusinessProfileForDiscovery,
+  researchContext: string | null = null,
 ): Promise<CompanyDiscoveryResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OpenAI API key is not configured.");
@@ -327,7 +329,7 @@ export async function discoverCompanyAndContacts(
         max_output_tokens: MAX_OUTPUT_TOKENS,
         max_tool_calls: MAX_TOOL_CALLS,
         truncation: "disabled",
-        input: buildPrompt(company, profile),
+        input: buildPrompt(company, profile, researchContext),
       }),
       signal: controller.signal,
     });

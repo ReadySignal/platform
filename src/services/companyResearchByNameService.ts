@@ -47,6 +47,14 @@ export type CompanyResearchByNameResult = {
   bestCandidate: CompanyResearchCandidate | null;
 };
 
+export type CompanyContactSearchResult = {
+  companyId: number;
+  companyName: string;
+  companyUrl: string | null;
+  candidates: CompanyResearchCandidate[];
+  bestCandidate: CompanyResearchCandidate | null;
+};
+
 type CompanyRow = {
   id: string | number;
   name: string;
@@ -312,5 +320,32 @@ export async function researchCompanyByName(
     evidence,
     candidates,
     bestCandidate,
+  };
+}
+
+export async function findCompanyContactsByName(
+  companyName: string,
+  companyUrl: string | null = null,
+  researchContext: string | null = null,
+): Promise<CompanyContactSearchResult> {
+  const normalized = normalizeName(companyName);
+  if (!normalized) throw new Error("companyName is required.");
+
+  const company = (await findCompanyByName(normalized)) || (await createCompanyByName(normalized, companyUrl));
+  const companyId = Number(company.id);
+  const context = researchContext?.trim().slice(0, 2_000) || null;
+  const discovery = await ensureCompanyDiscovery(companyId, true, context);
+  const discoveredCandidates = discovery.candidates.length > 0
+    ? discovery.candidates
+    : await getDiscoveryCandidates(companyId);
+  const candidates = discoveredCandidates.slice(0, 5).map(toResearchCandidate);
+  const refreshedCompany = await findCompanyByName(normalized);
+
+  return {
+    companyId,
+    companyName: company.name,
+    companyUrl: refreshedCompany?.website ?? company.website,
+    candidates,
+    bestCandidate: candidates[0] ?? null,
   };
 }

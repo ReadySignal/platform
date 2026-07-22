@@ -258,11 +258,28 @@ export async function getDiscoveryCandidates(companyId: number): Promise<Sourced
 
   const confidenceWeight = { High: 3, Medium: 2, Low: 1 };
   const validationWeight = { Validated: 4, Validating: 3, "Not Validated": 2, Failed: 1 };
-  return (((data as DiscoveryCandidateRow[] | null) || []).map(toCandidate)).sort((a, b) =>
+  const employmentWeight = { Current: 3, Unclear: 2, Former: 1 };
+  const promotionEligible = (candidate: SourcedDiscoveryCandidate) =>
+    candidate.employmentStatus === "Current" &&
+    candidate.confidence === "High" &&
+    candidate.validationStatus === "Validated" &&
+    (candidate.roleFitLevel === "Strong" || candidate.roleFitLevel === "Possible");
+
+  const sorted = (((data as DiscoveryCandidateRow[] | null) || []).map(toCandidate)).sort((a, b) =>
+    Number(promotionEligible(b)) - Number(promotionEligible(a)) ||
+    (b.roleFitScore ?? -1) - (a.roleFitScore ?? -1) ||
+    employmentWeight[b.employmentStatus] - employmentWeight[a.employmentStatus] ||
     validationWeight[b.validationStatus] - validationWeight[a.validationStatus] ||
-    confidenceWeight[b.confidence] - confidenceWeight[a.confidence] ||
-    (b.roleFitScore ?? -1) - (a.roleFitScore ?? -1),
+    confidenceWeight[b.confidence] - confidenceWeight[a.confidence],
   );
+
+  const seen = new Set<string>();
+  return sorted.filter((candidate) => {
+    const key = `${candidate.fullName}|${candidate.currentTitle}`.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function persistDiscoveryRun(
@@ -362,7 +379,11 @@ async function persistDiscoveryRun(
   return websiteUpdated;
 }
 
-export async function ensureCompanyDiscovery(companyId: number, forceRefresh = false): Promise<CompanyDiscoverySummary> {
+export async function ensureCompanyDiscovery(
+  companyId: number,
+  forceRefresh = false,
+  researchContext: string | null = null,
+): Promise<CompanyDiscoverySummary> {
   const profile = await getActiveProfile();
   if (!profile) return { websiteUpdated: false, website: null, candidates: [] };
   const supabase = getSupabaseAdmin();
@@ -388,7 +409,7 @@ export async function ensureCompanyDiscovery(companyId: number, forceRefresh = f
 
   const { data: created, error: createError } = await supabase
     .from("contact_discovery_runs")
-    .insert({ company_id: companyId, business_profile_id: profile.id, status: "Running", requested_count: 3, started_at: new Date().toISOString() })
+    .insert({ company_id: companyId, business_profile_id: profile.id, status: "Running", requested_count: 5, started_at: new Date().toISOString() })
     .select("id")
     .single();
   if (createError) throw new Error(`Failed to start contact discovery: ${createError.message}`);
@@ -396,7 +417,7 @@ export async function ensureCompanyDiscovery(companyId: number, forceRefresh = f
 
   try {
     const company = await getResearchCompany(companyId);
-    const result = await discoverCompanyAndContacts(company, profile);
+    const result = await discoverCompanyAndContacts(company, profile, researchContext);
     const websiteUpdated = await persistDiscoveryRun(runId, companyId, profile, result);
     return {
       websiteUpdated,
