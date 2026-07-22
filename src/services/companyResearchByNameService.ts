@@ -4,7 +4,8 @@ import { getSupabaseAdmin } from "../lib/supabaseAdmin";
 import { getEvidenceForCompany } from "./evidenceService";
 import { getCompanyIntelligence } from "./companyIntelligenceService";
 import { getActiveBusinessProfile } from "./businessProfileService";
-import { ensureCompanyDiscovery, getDiscoveryCandidates, type SourcedDiscoveryCandidate } from "./companyDiscoveryService";
+import { ensureCompanyDiscovery, getDiscoveryCandidates, persistContactValidations, type SourcedDiscoveryCandidate } from "./companyDiscoveryService";
+import { validateContactCandidates } from "./researchProviders/openAICompanyDiscoveryProvider";
 import { isAllowedPublicResearchSource } from "./researchProviders/openAIWebResearchProvider";
 import { runLiveResearchJob } from "./liveResearchOrchestrator";
 import { getResearchCompany, getResearchJob } from "./researchService";
@@ -53,6 +54,11 @@ export type CompanyContactSearchResult = {
   companyUrl: string | null;
   candidates: CompanyResearchCandidate[];
   bestCandidate: CompanyResearchCandidate | null;
+};
+
+export type CompanyContactValidationResult = CompanyContactSearchResult & {
+  attemptedCount: number;
+  validatedCount: number;
 };
 
 type CompanyRow = {
@@ -347,5 +353,67 @@ export async function findCompanyContactsByName(
     companyUrl: refreshedCompany?.website ?? company.website,
     candidates,
     bestCandidate: candidates[0] ?? null,
+  };
+}
+
+export async function validateCompanyContactsByName(
+  companyName: string,
+  candidates: CompanyResearchCandidate[],
+  companyUrl: string | null = null,
+  researchContext: string | null = null,
+): Promise<CompanyContactValidationResult> {
+  const normalized = normalizeName(companyName);
+  if (!normalized) throw new Error("companyName is required.");
+  const requested = candidates.slice(0, 5);
+  if (requested.length === 0) throw new Error("At least one contact candidate is required.");
+
+  const company = (await findCompanyByName(normalized)) || (await createCompanyByName(normalized, companyUrl));
+  const companyId = Number(company.id);
+  const researchCompany = await getResearchCompany(companyId);
+  const findings = await validateContactCandidates(
+    researchCompany,
+    requested.map((candidate) => ({ fullName: candidate.fullName, currentTitle: candidate.currentTitle })),
+    researchContext?.trim().slice(0, 2_000) || null,
+  );
+  await persistContactValidations(companyId, findings);
+
+  const byName = new Map(findings.map((finding) => [normalizeName(finding.fullName).toLowerCase(), finding]));
+  const results = requested.map((candidate) => {
+    const finding = byName.get(normalizeName(candidate.fullName).toLowerCase());
+    if (!finding) {
+      return {
+        ...candidate,
+        employmentStatus: "Unclear" as const,
+        validationStatus: "Not Validated" as const,
+        validationConfidence: null,
+        missingInformation: Array.from(new Set([...candidate.missingInformation, "No allowed public source validated current employment"])),
+      };
+    }
+    const validated = finding.employmentStatus === "Current" &&
+      finding.confidence === "High" &&
+      finding.conflictingSignals.length === 0;
+    return {
+      ...candidate,
+      currentTitle: finding.currentTitle,
+      sourceName: finding.sourceName,
+      sourceUrl: finding.sourceUrl,
+      employmentStatus: finding.employmentStatus,
+      validationStatus: validated ? ("Validated" as const) : finding.employmentStatus === "Former" ? ("Failed" as const) : ("Not Validated" as const),
+      confidence: finding.confidence,
+      validationConfidence: validated ? ("High" as const) : finding.confidence,
+      confidenceReasons: [finding.companyAssociationEvidence],
+      conflictingSignals: finding.conflictingSignals,
+      missingInformation: finding.missingInformation,
+    };
+  });
+  const validatedCount = results.filter((candidate) => candidate.validationStatus === "Validated").length;
+  return {
+    companyId,
+    companyName: company.name,
+    companyUrl: company.website,
+    candidates: results,
+    bestCandidate: results.find((candidate) => candidate.validationStatus === "Validated") ?? results[0] ?? null,
+    attemptedCount: requested.length,
+    validatedCount,
   };
 }

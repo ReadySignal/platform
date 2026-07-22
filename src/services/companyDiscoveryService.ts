@@ -89,6 +89,41 @@ export type CompanyDiscoverySummary = {
   candidates: SourcedDiscoveryCandidate[];
 };
 
+export async function persistContactValidations(companyId: number, contacts: PublicContactFinding[]) {
+  const supabase = getSupabaseAdmin();
+  for (const contact of contacts) {
+    const validated = contact.employmentStatus === "Current" &&
+      contact.confidence === "High" &&
+      contact.conflictingSignals.length === 0;
+    const validationStatus = validated
+      ? "Validated"
+      : contact.employmentStatus === "Former" || contact.confidence === "Low"
+        ? "Failed"
+        : "Not Validated";
+    const { error } = await supabase
+      .from("contact_discovery_candidates")
+      .update({
+        current_title: contact.currentTitle,
+        source_name: contact.sourceName,
+        source_url: contact.sourceUrl,
+        confidence: contact.confidence,
+        employment_status: contact.employmentStatus,
+        employment_verified_at: validated ? new Date().toISOString() : null,
+        company_association_evidence: contact.companyAssociationEvidence,
+        validation_status: validationStatus,
+        validated_at: validated ? new Date().toISOString() : null,
+        validation_source_name: contact.sourceName,
+        validation_source_url: contact.sourceUrl,
+        validation_confidence: contact.confidence,
+        conflicting_signals: contact.conflictingSignals,
+        missing_information: contact.missingInformation,
+      })
+      .eq("company_id", companyId)
+      .eq("full_name", contact.fullName);
+    if (error) throw new Error(`Failed to save validation for ${contact.fullName}: ${error.message}`);
+  }
+}
+
 async function getStoredWebsite(companyId: number): Promise<CompanyDiscoveryResult["website"]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
