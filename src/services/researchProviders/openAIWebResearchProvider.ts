@@ -119,6 +119,16 @@ const allowedEvidenceTypes = [
   "modernization or reliability initiative",
   "relevant industry news",
 ];
+const DISALLOWED_SOURCE_HOSTS = [
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "x.com",
+  "twitter.com",
+  "zoominfo.com",
+  "rocketreach.co",
+  "signalhire.com",
+];
 
 function formatCompanyFacts(company: ResearchCompany) {
   const hq = [company.hqCity, company.hqState || company.state, company.hqCountry].filter(Boolean).join(", ");
@@ -138,11 +148,14 @@ function formatCompanyFacts(company: ResearchCompany) {
 }
 
 function buildPrompt(company: ResearchCompany) {
-  return `Research public company-level business evidence for ReadySignal.
+  return `Research public company-level business evidence for the target company below.
+ReadySignal is the application performing the research, not the research subject.
+Only return findings explicitly about ${company.name}. Do not return findings about ReadySignal or similarly named companies unless ${company.name} is ReadySignal.
 Known company facts from the user's imported list:
 ${formatCompanyFacts(company)}
 
 Window: last ${researchWindowDays} days. Prefer company newsroom/press releases, company website, reputable industry publications, and reputable news organizations.
+Do not use LinkedIn, social profiles, people-search sites, or data brokers as evidence sources.
 Look only for: ${allowedEvidenceTypes.join(", ")}.
 Only search for NEW developments. Do not repeat known company facts as findings.
 Do not research contacts. Do not infer, invent, or include unsupported claims.
@@ -404,7 +417,7 @@ function parseResearchOutput(company: ResearchCompany, responseBody: unknown): O
   return output;
 }
 
-function normalizeSourceUrl(value: string | null | undefined) {
+export function normalizeSourceUrl(value: string | null | undefined) {
   if (!value) {
     return null;
   }
@@ -426,6 +439,50 @@ function normalizeSourceUrl(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+export function isAllowedPublicResearchSource(value: string | null | undefined) {
+  const normalized = normalizeSourceUrl(value);
+  if (!normalized) return false;
+
+  try {
+    const host = new URL(normalized).hostname.toLowerCase().replace(/^www\./, "");
+    return !DISALLOWED_SOURCE_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeCompanyReference(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function sourceMatchesCompanyWebsite(sourceUrl: string, companyWebsite: string | null | undefined) {
+  if (!companyWebsite) {
+    return false;
+  }
+
+  try {
+    const sourceHost = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
+    const companyUrl = companyWebsite.includes("://") ? companyWebsite : `https://${companyWebsite}`;
+    const companyHost = new URL(companyUrl).hostname.toLowerCase().replace(/^www\./, "");
+
+    return sourceHost === companyHost || sourceHost.endsWith(`.${companyHost}`);
+  } catch {
+    return false;
+  }
+}
+
+function findingReferencesTargetCompany(company: ResearchCompany, finding: OpenAIFinding, sourceUrl: string) {
+  const companyReference = normalizeCompanyReference(company.name);
+  const findingReference = normalizeCompanyReference(
+    [finding.headline, finding.summary, finding.sourceName].filter(Boolean).join(" "),
+  );
+
+  return (
+    (companyReference.length >= 3 && findingReference.includes(companyReference)) ||
+    sourceMatchesCompanyWebsite(sourceUrl, company.website)
+  );
 }
 
 function collectUrlsFromUnknown(value: unknown, urls: Set<string>) {
@@ -452,7 +509,7 @@ function collectUrlsFromUnknown(value: unknown, urls: Set<string>) {
   }
 }
 
-function getVerifiedSourceUrls(responseBody: unknown) {
+export function getVerifiedSourceUrls(responseBody: unknown) {
   const response = responseBody as OpenAIResponseBody;
   const urls = new Set<string>();
 
@@ -492,6 +549,7 @@ function normalizeFinding(
     !finding.summary?.trim() ||
     !finding.sourceName?.trim() ||
     !normalizedSourceUrl ||
+    !isAllowedPublicResearchSource(normalizedSourceUrl) ||
     !finding.confidence
   ) {
     return null;
@@ -503,6 +561,15 @@ function normalizeFinding(
       companyName: company.name,
       sourceHost: normalizedSourceUrl ? new URL(normalizedSourceUrl).hostname : "unknown",
       verifiedSourcesExisted: verifiedSourceUrls.size > 0,
+    });
+    return null;
+  }
+
+  if (!findingReferencesTargetCompany(company, finding, normalizedSourceUrl)) {
+    console.warn("[research] Discarded evidence about a different company.", {
+      companyId: company.id,
+      companyName: company.name,
+      sourceHost: new URL(normalizedSourceUrl).hostname,
     });
     return null;
   }
