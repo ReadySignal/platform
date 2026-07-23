@@ -310,7 +310,7 @@ export async function getDiscoveryCandidates(companyId: number): Promise<Sourced
 
   const seen = new Set<string>();
   return sorted.filter((candidate) => {
-    const key = `${candidate.fullName}|${candidate.currentTitle}`.toLowerCase().replace(/\s+/g, " ").trim();
+    const key = candidate.fullName.toLowerCase().replace(/\s+/g, " ").trim();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
